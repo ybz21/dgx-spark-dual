@@ -102,10 +102,14 @@ generate_compose() {
 
     local volumes_extra=""
     local entrypoint_line=""
-    if [ -n "$CUSTOM_SCRIPTS_DIR" ] && [ -n "$CUSTOM_ENTRYPOINT" ]; then
-        volumes_extra="      - ${CUSTOM_SCRIPTS_DIR}/${CUSTOM_REASONING_DETECTOR}:/custom/${CUSTOM_REASONING_DETECTOR}
-      - ${CUSTOM_SCRIPTS_DIR}/${CUSTOM_ENTRYPOINT}:/custom/entrypoint.sh"
-        entrypoint_line='    entrypoint: ["/custom/entrypoint.sh"]'
+    if [ -n "$CUSTOM_SCRIPTS_DIR" ] && [ -n "$CUSTOM_FILES" ]; then
+        for f in $CUSTOM_FILES; do
+            volumes_extra="${volumes_extra}      - ${CUSTOM_SCRIPTS_DIR}/${f}:/custom/${f}
+"
+        done
+        if [ -n "$CUSTOM_ENTRYPOINT" ]; then
+            entrypoint_line='    entrypoint: ["/custom/'"${CUSTOM_ENTRYPOINT}"'"]'
+        fi
     fi
 
     cat <<YAML
@@ -200,10 +204,12 @@ cmd_check() {
             "ssh_node $i 'ip addr | grep -q $FAST_IP'" \
             "运行: ./deploy.sh network"
 
-        if [ -n "$CUSTOM_SCRIPTS_DIR" ] && [ -n "$CUSTOM_ENTRYPOINT" ]; then
-            _check "  自定义脚本存在" \
-                "ssh_node $i 'test -f ${CUSTOM_SCRIPTS_DIR}/${CUSTOM_ENTRYPOINT}'" \
-                "确认文件存在: ${CUSTOM_SCRIPTS_DIR}/${CUSTOM_ENTRYPOINT}"
+        if [ -n "$CUSTOM_SCRIPTS_DIR" ] && [ -n "$CUSTOM_FILES" ]; then
+            for f in $CUSTOM_FILES; do
+                _check "  自定义: $f" \
+                    "ssh_node $i 'test -f ${CUSTOM_SCRIPTS_DIR}/${f}'" \
+                    "确认文件存在: ${CUSTOM_SCRIPTS_DIR}/${f}"
+            done
         fi
     done
 
