@@ -53,6 +53,7 @@ NO_SYNC_IMAGE=false
 DRY_RUN=false
 STOP_ONLY=false
 STATUS_ONLY=false
+SUDO_PASS=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -63,6 +64,7 @@ while [ $# -gt 0 ]; do
         --stop)           STOP_ONLY=true ;;
         --status)         STATUS_ONLY=true ;;
         --port)           shift; API_PORT="$1" ;;
+        --sudo-pass)      shift; SUDO_PASS="$1" ;;
         --max-len)        shift; MAX_MODEL_LEN="$1" ;;
         -h|--help)
             sed -n '2,/^# ==/p' "$0" | grep '^#' | sed 's/^# \?//'
@@ -134,6 +136,25 @@ detect_quantization() {
     echo ""
 }
 
+
+# 远程执行 sudo 命令
+remote_sudo() {
+    local host="${1:-}" cmd="$2"
+    if [ -n "$SUDO_PASS" ]; then
+        if [ -z "$host" ]; then
+            echo "$SUDO_PASS" | sudo -S bash -c "$cmd" 2>/dev/null
+        else
+            ssh ${LOCAL_USER}@${host} "echo '$SUDO_PASS' | sudo -S bash -c '$cmd'" 2>/dev/null
+        fi
+    else
+        if [ -z "$host" ]; then
+            sudo bash -c "$cmd" 2>/dev/null
+        else
+            ssh ${LOCAL_USER}@${host} "sudo bash -c '$cmd'" 2>/dev/null
+        fi
+    fi
+}
+
 detect_cx7_interface() {
     # 在指定机器上找有 carrier 的 ConnectX-7 口, $1=空表示本机, 否则SSH
     local host="${1:-}"
@@ -164,7 +185,14 @@ QUANTIZATION="$(detect_quantization)"
 NCCL_IF="$(detect_cx7_interface)"
 [ -z "$NCCL_IF" ] && die "本机未检测到有光缆的 ConnectX-7 口"
 FAST_IP_HEAD="$(detect_fast_ip "" "$NCCL_IF")"
-[ -z "$FAST_IP_HEAD" ] && die "本机高速网口 $NCCL_IF 未配置 IP"
+if [ -z "$FAST_IP_HEAD" ]; then
+    warn "本机高速网口 $NCCL_IF 未配置 IP, 自动配置 10.0.0.1/24"
+    if command -v sudo &>/dev/null; then
+        remote_sudo "" "ip addr add 10.0.0.1/24 dev $NCCL_IF 2>/dev/null; ip link set $NCCL_IF up" || true
+    fi
+    FAST_IP_HEAD="$(detect_fast_ip "" "$NCCL_IF")"
+    [ -z "$FAST_IP_HEAD" ] && die "本机高速网口 $NCCL_IF 自动配置 IP 失败，请手动配置: sudo ip addr add 10.0.0.1/24 dev $NCCL_IF"
+fi
 
 # 检测 GLOO 接口 (管理网口)
 GLOO_IF=$(ip -4 addr show | grep -B2 "$LOCAL_MGMT_IP" | grep -oP '^\d+: \K\S+(?=:)' | head -1)
@@ -214,7 +242,19 @@ else
     success "  工作节点光口: $NCCL_IF_WORKER"
     FAST_IP_WORKER="$(detect_fast_ip "$WORKER_IP" "$NCCL_IF_WORKER")"
     if [ -z "$FAST_IP_WORKER" ]; then
-        error "  工作节点高速网口 $NCCL_IF_WORKER 未配置 IP"; FAIL=$((FAIL + 1))
+        # 自动配置: 基于本机 IP 生成工作节点 IP
+        HEAD_PREFIX=$(echo "$FAST_IP_HEAD" | grep -oP '^\d+\.\d+\.\d+\.')
+        HEAD_LAST=$(echo "$FAST_IP_HEAD" | grep -oP '\d+$')
+        WORKER_LAST=$((HEAD_LAST + 1))
+        AUTO_WORKER_IP="${HEAD_PREFIX}${WORKER_LAST}"
+        warn "  工作节点高速网口 $NCCL_IF_WORKER 未配置 IP, 自动配置 ${AUTO_WORKER_IP}/24"
+        remote_sudo "$WORKER_IP" "ip addr add ${AUTO_WORKER_IP}/24 dev $NCCL_IF_WORKER 2>/dev/null; ip link set $NCCL_IF_WORKER up" || true
+        FAST_IP_WORKER="$(detect_fast_ip "$WORKER_IP" "$NCCL_IF_WORKER")"
+        if [ -z "$FAST_IP_WORKER" ]; then
+            error "  工作节点自动配置 IP 失败 (可能需要 sudo 密码)"; FAIL=$((FAIL + 1))
+        else
+            success "  工作节点高速网 IP: $FAST_IP_WORKER (自动配置)"
+        fi
     else
         success "  工作节点高速网 IP: $FAST_IP_WORKER"
     fi
