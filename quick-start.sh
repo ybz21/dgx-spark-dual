@@ -335,7 +335,18 @@ elif ssh ${LOCAL_USER}@${WORKER_IP} "docker image inspect '$IMAGE'" &>/dev/null;
     success "工作节点已有镜像"
 else
     info "传输镜像到工作节点 (通过高速网)..."
-    docker save "$IMAGE" | ssh -o StrictHostKeyChecking=no ${LOCAL_USER}@${FAST_IP_WORKER} "docker load"
+    IMAGE_SIZE=
+The command 'docker' could not be found in this WSL 2 distro.
+We recommend to activate the WSL integration in Docker Desktop settings.
+
+For details about using Docker Desktop with WSL 2, visit:
+
+https://docs.docker.com/go/wsl2/
+    if command -v pv &>/dev/null; then
+        docker save  | pv -s  -N 镜像传输 | ssh -o StrictHostKeyChecking=no @ docker load >/dev/null
+    else
+        docker save  | ssh -o StrictHostKeyChecking=no @ docker load
+    fi
     success "镜像传输完成"
 fi
 
