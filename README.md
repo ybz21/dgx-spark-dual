@@ -1,176 +1,149 @@
-# DGX Spark 多节点推理部署
+# DGX Spark 双节点大模型推理部署
 
-通过光缆 (ConnectX-7) 连接多台 DGX Spark，使用 SGLang Tensor Parallelism 实现跨节点大模型推理。
+通过光缆 (ConnectX-7) 连接两台 DGX Spark (GB10)，使用 vLLM + Ray 实现跨节点 Tensor Parallelism 大模型推理。
 
-## 硬件要求
+## 硬件
 
-- 2+ 台 NVIDIA DGX Spark (GB10, 128GB 显存)
-- 光缆连接 ConnectX-7 网口 (每台 4 口, 最高 200Gbps/口)
-- 各节点可通过管理网 SSH 免密互通
+| 节点 | 角色 | GPU | 内存 | 互联 |
+|------|------|-----|------|------|
+| spark01 | Ray Head + vLLM API | NVIDIA GB10 (Blackwell) | 128 GiB 统一内存 | 200Gbps RoCE |
+| spark02 | Ray Worker | NVIDIA GB10 (Blackwell) | 128 GiB 统一内存 | 200Gbps RoCE |
 
 ## 快速开始
 
-### 1. 配置节点
-
-编辑 `.env`，修改 `NODE_LIST` 为你的机器信息：
+只需三个参数即可完成部署：**工作节点 IP**、**Docker 镜像**、**模型路径**。
 
 ```bash
-NODE_LIST=(
-    "管理网IP,高速网IP,SSH用户名,主机名"
-    "192.168.130.15,10.10.10.1,ai,spark-ccf1"    # 节点1 (HEAD)
-    "192.168.130.16,10.10.10.2,ai,spark-bac4"    # 节点2 (WORKER)
-)
+bash quick-start.sh <工作节点IP> <Docker镜像> <模型路径>
 ```
 
-### 2. 配置高速网络
-
-插上光缆后，一键配置所有节点的 ConnectX-7 网卡 IP 和 MTU：
+### 示例
 
 ```bash
-bash deploy.sh network
-# 输入 sudo 密码，自动配置所有节点
+# 部署 Qwen3.5-122B (compressed-tensors NVFP4, 双节点 TP=2)
+bash quick-start.sh 192.168.130.8 \
+  ghcr.nju.edu.cn/bjk110/vllm-spark:v019-ngc2603 \
+  ~/models/Qwen3___5-122B-A10B-NVFP4
 ```
 
-### 3. 测试连接
+脚本自动完成：
+1. **预检校验** — Docker、镜像、模型文件、高速网络、SSH 连通性
+2. **同步镜像** — 通过高速网将 Docker 镜像传输到工作节点
+3. **同步模型** — 通过高速网 rsync 模型文件到工作节点
+4. **生成配置** — 自动检测量化方式、网络接口、NCCL 参数
+5. **启动服务** — Ray Head → Worker 加入 → vLLM TP=2 推理
+6. **健康检查** — 等待模型加载完成并测试推理
+
+### 选项
 
 ```bash
-# 在节点1上运行
-bash test-connection.sh 1 2
+# 仅校验，不执行
+bash quick-start.sh 192.168.130.8 IMAGE MODEL --dry-run
+
+# 镜像/模型已在工作节点上，跳过同步
+bash quick-start.sh 192.168.130.8 IMAGE MODEL --no-sync-image --no-sync-model
+
+# 指定 API 端口和上下文长度
+bash quick-start.sh 192.168.130.8 IMAGE MODEL --port 8000 --max-len 32768
+
+# 停止服务
+bash quick-start.sh --stop 192.168.130.8
+
+# 查看状态
+bash quick-start.sh --status
 ```
 
-预期结果：
-- Ping 延迟 < 1ms
-- Jumbo Frame (MTU 9000) 通过
-- `iperf3` TCP ~40 Gbps
-- `ib_write_bw` RDMA ~100 Gbps
+## 已验证模型
 
-### 4. 启动推理
+| 模型 | 量化 | TP | 镜像 | 速度 |
+|------|------|----|------|------|
+| Qwen3.5-122B-A10B-NVFP4 | compressed-tensors | 2 | vllm-spark:v019-ngc2603 | ~17 t/s |
+| Qwen3.5-35B-A3B-NVFP4 | modelopt_fp4 | 1* | sglang-dev-cu13-accel | ~30 t/s |
 
-```bash
-bash deploy.sh start
-# 等待 2-3 分钟模型加载完成
+\* 35B 模型单机即可运行，无需双节点
 
-bash deploy.sh status   # 查看状态
-bash deploy.sh test     # 发送测试请求
+## 架构
+
+```
+spark01 (head)                    spark02 (worker)
+┌─────────────────────┐          ┌─────────────────────┐
+│  Ray Head (6379)    │          │  Ray Worker          │
+│  vLLM API (:30000)  │◄────────►│                      │
+│  GB10 GPU           │ 200Gbps │  GB10 GPU            │
+│  TP rank 0          │  RoCE   │  TP rank 1           │
+└─────────────────────┘          └─────────────────────┘
 ```
 
-API 默认监听在 HEAD 节点的 30000 端口，兼容 OpenAI 格式：
+## API 使用
+
+兼容 OpenAI 格式：
 
 ```bash
-curl http://HEAD节点IP:30000/v1/chat/completions \
+curl http://192.168.130.16:30000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model":"/model","messages":[{"role":"user","content":"你好"}]}'
+  -d '{
+    "model": "Qwen3___5-122B-A10B-NVFP4",
+    "messages": [{"role": "user", "content": "你好"}],
+    "max_tokens": 500
+  }'
 ```
-
-## 管理命令
-
-```bash
-bash deploy.sh start       # 启动多节点推理
-bash deploy.sh stop        # 停止
-bash deploy.sh restart     # 重启
-bash deploy.sh status      # 查看状态 + 健康检查
-bash deploy.sh logs [N]    # 查看节点 N 的日志 (默认 1)
-bash deploy.sh test        # 发送测试请求
-bash deploy.sh network     # 配置高速网络 (需 sudo)
-bash deploy.sh sync        # 同步配置到所有节点
-```
-
-## .env 配置说明
-
-### 节点配置
-
-```bash
-NODE_LIST=(
-    "管理网IP,高速网IP,SSH用户名,主机名"
-)
-```
-
-| 字段 | 说明 | 示例 |
-|------|------|------|
-| 管理网IP | SSH 连接用的 IP | `192.168.130.15` |
-| 高速网IP | ConnectX-7 光缆互联 IP | `10.10.10.1` |
-| SSH用户名 | 免密 SSH 的用户 | `ai` |
-| 主机名 | 可选，用于日志显示 | `spark-ccf1` |
-
-- 第一个节点自动作为 HEAD (rank 0)
-- 添加行即可增加 WORKER 节点
-- `TP_SIZE` 需等于总节点数
-
-### 换机器
-
-只需修改 `NODE_LIST` 中的 IP：
-
-```bash
-NODE_LIST=(
-    "192.168.1.100,10.10.10.1,ai,new-spark-1"
-    "192.168.1.101,10.10.10.2,ai,new-spark-2"
-)
-```
-
-然后重新执行：
-
-```bash
-bash deploy.sh network     # 配置新机器网络
-bash deploy.sh restart     # 重启服务
-```
-
-### 换模型
-
-```bash
-MODEL_PATH=/home/ai/models/DeepSeek-V3
-SGLANG_IMAGE=nvcr.io/nvidia/sglang:26.03-py3
-TP_SIZE=2
-QUANTIZATION=                # 留空=bf16, 或 modelopt_fp4
-EXTRA_ARGS=--trust-remote-code
-```
-
-### 网络参数
-
-```bash
-FAST_IFACE=enp1s0f0np0       # ConnectX-7 接口名
-FAST_MTU=9000                # Jumbo Frame
-RDMA_HCA=rocep1s0f0          # RDMA 设备名
-```
-
-查看可用接口: `ip -br link show`
-查看 RDMA 设备: `ibv_devinfo`
 
 ## 文件结构
 
 ```
 dgx-spark-multinode/
-├── .env                  # 配置文件 (机器、模型、网络)
-├── deploy.sh             # 管理脚本 (start/stop/status/...)
-├── setup-network.sh      # 网络配置 (由 deploy.sh network 调用)
-├── test-connection.sh    # 连接测试
-├── docker-compose.node1.yml   # HEAD compose (自动生成)
-├── docker-compose.node2.yml   # WORKER compose (自动生成)
-└── README.md
+├── quick-start.sh          # 一键部署入口 (校验+传输+启动)
+├── docker-compose.yml      # vLLM head/worker compose 配置
+├── entrypoint.sh           # 智能入口 (TP1 直连 / TP2 Ray)
+├── .env.example            # 配置模板
+├── patches/                # DGX Spark SM121 兼容补丁
+│   ├── apply_sm121_patches.py
+│   ├── fix_cuda13_memcpy_batch.py
+│   ├── fix_pytorch211_compat.py
+│   └── ...
+├── deploy.sh               # SGLang 部署管理 (旧版)
+├── auto-pull.sh            # 镜像自动拉取 (失败重试+源切换)
+├── auto-deploy-vllm.sh     # 镜像拉完自动部署
+└── scripts/
+    ├── common.sh           # 共享函数库
+    ├── setup-network.sh    # 高速网络配置
+    └── test-connection.sh  # 连接测试
 ```
 
-## 注意事项
+## 网络配置
 
-- 所有节点的模型路径 (`MODEL_PATH`) 必须一致，模型文件需提前拷贝到每台机器
-- 节点间需免密 SSH，可用 `ssh-copy-id` 配置
-- 当前 NCCL 通过 TCP Socket 通信；未来可配置 RDMA (RoCE) 以获得更高带宽
-- Qwen3.5-35B-A3B 等单机可装下的模型，多节点不会更快（通信开销）；多节点的价值在于跑 128GB 以上的大模型
-- `docker-compose.nodeN.yml` 在 `deploy.sh start` 时自动生成，手动修改会被覆盖
+### 高速网 (ConnectX-7 光缆)
 
-## 前置准备
+两台 DGX Spark 用 QSFP112 光缆直连同一组网口（如 `enp1s0f0np0`），手动配置 IP：
+
+```bash
+# spark01
+sudo ip addr add 10.0.0.1/24 dev enp1s0f0np0
+
+# spark02
+sudo ip addr add 10.0.0.2/24 dev enp1s0f0np0
+```
 
 ### SSH 免密
 
 ```bash
-# 在控制机上，对每台 DGX Spark 执行
-ssh-copy-id ai@192.168.130.15
+# 控制机到两台 Spark
 ssh-copy-id ai@192.168.130.16
+ssh-copy-id ai@192.168.130.8
 
-# DGX Spark 之间也需要互通
-ssh ai@192.168.130.15 "ssh-copy-id ai@192.168.130.16"
-ssh ai@192.168.130.16 "ssh-copy-id ai@192.168.130.15"
+# Spark 之间互通
+ssh ai@192.168.130.16 "ssh-copy-id ai@192.168.130.8"
 ```
 
-### 光缆连接
+## 注意事项
 
-DGX Spark 有 4 个 ConnectX-7 网口（2 组各 2 口），默认使用第一个口 `enp1s0f0np0`。
-用 QSFP112 光缆/DAC 铜缆连接两台机器的对应网口即可。
+- DGX Spark 是统一内存架构 (128GB GPU+CPU 共享)，122B 模型需要双节点才能放下
+- 当前使用 NCCL TCP Socket 通信 (`NCCL_IB_DISABLE=1`)，RoCE/IB 需要额外配置 GID
+- `docker-compose.yml` 中的 `restart: unless-stopped` 会自动重启崩溃的容器
+- 模型文件需要在两台机器的相同路径下
+
+## 致谢
+
+- [bjk110/spark_vllm_docker](https://github.com/bjk110/spark_vllm_docker) — DGX Spark vLLM 适配和 SM121 补丁
+- [vLLM](https://github.com/vllm-project/vllm) — 高性能 LLM 推理引擎
+- [SGLang](https://github.com/sgl-project/sglang) — 结构化生成语言推理框架
