@@ -34,10 +34,11 @@ header()  { echo -e "\n${BOLD}=== $* ===${NC}"; }
 # ---- 默认配置 ----
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOCAL_USER="ai"
-FAST_IP_HEAD="10.0.0.1"
-FAST_IP_WORKER="10.0.0.2"
-NCCL_IF="enp1s0f0np0"
-GLOO_IF="enP7s7"
+FAST_IP_HEAD=""
+FAST_IP_WORKER=""
+NCCL_IF=""
+NCCL_IF_WORKER=""
+GLOO_IF=""
 API_PORT=30000
 MAX_MODEL_LEN=8192
 MAX_NUM_SEQS=4
@@ -133,22 +134,41 @@ detect_quantization() {
     echo ""
 }
 
-detect_nccl_interface() {
-    # 找到有 10.0.0.x IP 的高速网口
-    local iface
-    iface=$(ip -4 addr show | grep -B2 "10\.0\.0\." | grep -oP '^\d+: \K\S+(?=:)' | head -1)
-    [ -n "$iface" ] && echo "$iface" && return
-    # fallback: 找 carrier=1 的 ConnectX-7 口
-    for dev in enp1s0f0np0 enp1s0f1np1 enP2p1s0f0np0 enP2p1s0f1np1; do
-        [ "$(cat /sys/class/net/$dev/carrier 2>/dev/null)" = "1" ] && echo "$dev" && return
-    done
-    echo "enp1s0f0np0"
+detect_cx7_interface() {
+    # 在指定机器上找有 carrier 的 ConnectX-7 口, $1=空表示本机, 否则SSH
+    local host="${1:-}"
+    local cmd='for dev in enp1s0f0np0 enp1s0f1np1 enP2p1s0f0np0 enP2p1s0f1np1; do [ -f /sys/class/net/$dev/carrier ] && [ "$(cat /sys/class/net/$dev/carrier 2>/dev/null)" = "1" ] && echo $dev && break; done'
+    if [ -z "$host" ]; then
+        bash -c "$cmd"
+    else
+        ssh -o ConnectTimeout=5 -o BatchMode=yes ${LOCAL_USER}@${host} "$cmd" 2>/dev/null
+    fi
+}
+
+detect_fast_ip() {
+    # 在指定接口上找 IP, $1=空表示本机
+    local host="${1:-}" iface="$2"
+    local cmd="ip -4 addr show $iface 2>/dev/null | grep -oP 'inet \K[^/]+' | head -1"
+    if [ -z "$host" ]; then
+        bash -c "$cmd"
+    else
+        ssh -o ConnectTimeout=5 -o BatchMode=yes ${LOCAL_USER}@${host} "$cmd" 2>/dev/null
+    fi
 }
 
 LOCAL_MGMT_IP="$(detect_local_mgmt_ip)"
 [ -z "$LOCAL_MGMT_IP" ] && die "无法检测本机管理网 IP"
 QUANTIZATION="$(detect_quantization)"
-NCCL_IF="$(detect_nccl_interface)"
+
+# 检测本机高速网口和 IP
+NCCL_IF="$(detect_cx7_interface)"
+[ -z "$NCCL_IF" ] && die "本机未检测到有光缆的 ConnectX-7 口"
+FAST_IP_HEAD="$(detect_fast_ip "" "$NCCL_IF")"
+[ -z "$FAST_IP_HEAD" ] && die "本机高速网口 $NCCL_IF 未配置 IP"
+
+# 检测 GLOO 接口 (管理网口)
+GLOO_IF=$(ip -4 addr show | grep -B2 "$LOCAL_MGMT_IP" | grep -oP '^\d+: \K\S+(?=:)' | head -1)
+[ -z "$GLOO_IF" ] && GLOO_IF="enP7s7"
 
 # 构建 vLLM extra args
 VLLM_EXTRA_ARGS="--enable-chunked-prefill"
@@ -185,6 +205,29 @@ echo ""
 info "工作节点 (${WORKER_IP})"
 _check "SSH 连接" "ssh -o ConnectTimeout=5 -o BatchMode=yes ${LOCAL_USER}@${WORKER_IP} 'echo ok'"
 _check "Docker 运行中" "ssh ${LOCAL_USER}@${WORKER_IP} 'docker info'"
+
+# 检测工作节点光口和高速网 IP
+NCCL_IF_WORKER="$(detect_cx7_interface "$WORKER_IP")"
+if [ -z "$NCCL_IF_WORKER" ]; then
+    error "  工作节点未检测到有光缆的 ConnectX-7 口"; FAIL=$((FAIL + 1))
+else
+    success "  工作节点光口: $NCCL_IF_WORKER"
+    FAST_IP_WORKER="$(detect_fast_ip "$WORKER_IP" "$NCCL_IF_WORKER")"
+    if [ -z "$FAST_IP_WORKER" ]; then
+        error "  工作节点高速网口 $NCCL_IF_WORKER 未配置 IP"; FAIL=$((FAIL + 1))
+    else
+        success "  工作节点高速网 IP: $FAST_IP_WORKER"
+    fi
+fi
+# 判断两台光口是否一致
+if [ -n "$NCCL_IF" ] && [ -n "$NCCL_IF_WORKER" ]; then
+    if [ "$NCCL_IF" = "$NCCL_IF_WORKER" ]; then
+        NCCL_IF_COMPOSE="$NCCL_IF"
+    else
+        warn "  两台光口不同 ($NCCL_IF vs $NCCL_IF_WORKER), NCCL 自动检测"
+        NCCL_IF_COMPOSE=""
+    fi
+fi
 _check "高速网连通" "ping -c 1 -W 2 $FAST_IP_WORKER"
 
 # 工作节点镜像 (仅警告)
@@ -286,7 +329,7 @@ SERVED_MODEL_NAME=${MODEL_NAME}
 TP_SIZE=2
 HEAD_ROCE_IP=${FAST_IP_HEAD}
 WORKER_ROCE_IP=${FAST_IP_WORKER}
-ROCE_IF_NAME=${NCCL_IF}
+ROCE_IF_NAME=${NCCL_IF_COMPOSE:-${NCCL_IF}}
 IB_HCA_NAME=roce$(echo "${NCCL_IF}" | sed 's/np[0-9]*$//' | sed 's/^en//')
 RAY_PORT=6379
 HOST_PORT=${API_PORT}

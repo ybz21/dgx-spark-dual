@@ -37,7 +37,7 @@ services:
       - HEAD_ROCE_IP=${HEAD_ROCE_IP}
       - RAY_PORT=${RAY_PORT}
       - GLOO_SOCKET_IFNAME=${GLOO_IF_NAME}
-      - NCCL_SOCKET_IFNAME=enp1s0f0np0
+      - NCCL_SOCKET_IFNAME=${ROCE_IF_NAME}
       - NCCL_IB_DISABLE=1
       - NCCL_DEBUG=INFO
       - RAY_DEDUP_LOGS=0
@@ -80,7 +80,7 @@ services:
       - WORKER_ROCE_IP=${WORKER_ROCE_IP}
       - RAY_PORT=${RAY_PORT}
       - GLOO_SOCKET_IFNAME=${GLOO_IF_NAME}
-      - NCCL_SOCKET_IFNAME=enp1s0f0np0
+      - NCCL_SOCKET_IFNAME=${ROCE_IF_NAME}
       - NCCL_IB_DISABLE=1
       - NCCL_DEBUG=INFO
       - RAY_memory_monitor_refresh_ms=0
