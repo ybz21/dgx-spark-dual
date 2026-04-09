@@ -1,3 +1,4 @@
 .env
 docker-compose.node*.yml
 *.log
+.cache/
