@@ -395,7 +395,7 @@ success "配置已生成"
 # 同步到工作节点
 info "同步配置到工作节点..."
 ssh ${LOCAL_USER}@${WORKER_IP} "mkdir -p ~/dgx-spark-multinode/runtime/.cache/vllm"
-rsync -ah -e "ssh -o StrictHostKeyChecking=no" "${SCRIPT_DIR}/runtime/" "${LOCAL_USER}@${WORKER_IP}:~/dgx-spark-multinode/runtime/"
+rsync -ah --exclude .cache -e "ssh -o StrictHostKeyChecking=no" "${SCRIPT_DIR}/runtime/" "${LOCAL_USER}@${WORKER_IP}:~/dgx-spark-multinode/runtime/"
 success "配置已同步"
 
 # ==== Step 5: 启动 ====
