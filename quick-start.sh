@@ -335,7 +335,7 @@ elif ssh ${LOCAL_USER}@${WORKER_IP} "docker image inspect '$IMAGE'" &>/dev/null;
     success "工作节点已有镜像"
 else
     info "传输镜像到工作节点 (通过高速网)..."
-    docker save "$IMAGE" | ssh ${LOCAL_USER}@${FAST_IP_WORKER} "docker load"
+    docker save "$IMAGE" | ssh -o StrictHostKeyChecking=no ${LOCAL_USER}@${FAST_IP_WORKER} "docker load"
     success "镜像传输完成"
 fi
 
@@ -353,7 +353,7 @@ else
     fi
     ssh ${LOCAL_USER}@${WORKER_IP} "mkdir -p ${MODEL_PATH}"
     info "同步 ${MODEL_NAME} (${MODEL_SIZE_GB}GB)..."
-    rsync -ah --info=progress2 "${MODEL_PATH}/" "${LOCAL_USER}@${SYNC_TARGET}:${MODEL_PATH}/"
+    rsync -ah --info=progress2 -e "ssh -o StrictHostKeyChecking=no" "${MODEL_PATH}/" "${LOCAL_USER}@${SYNC_TARGET}:${MODEL_PATH}/"
     success "模型同步完成"
 fi
 
@@ -389,7 +389,7 @@ success "配置已生成"
 # 同步到工作节点
 info "同步配置到工作节点..."
 ssh ${LOCAL_USER}@${WORKER_IP} "mkdir -p ~/dgx-spark-multinode/runtime/.cache/vllm"
-rsync -ah "${SCRIPT_DIR}/runtime/" "${LOCAL_USER}@${WORKER_IP}:~/dgx-spark-multinode/runtime/"
+rsync -ah -e "ssh -o StrictHostKeyChecking=no" "${SCRIPT_DIR}/runtime/" "${LOCAL_USER}@${WORKER_IP}:~/dgx-spark-multinode/runtime/"
 success "配置已同步"
 
 # ==== Step 5: 启动 ====
