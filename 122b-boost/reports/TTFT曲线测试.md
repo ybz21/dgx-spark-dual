@@ -30,4 +30,4 @@
 - **每新增 1k token 的 TTFT 代价**：< 8k 时约 0.5 ms/tok，≥ 64k 时升至 0.85 ms/tok（attention O(n²) 曲线）
 - **Decode 吞吐基本稳定** 39–45 tok/s，长上下文影响很小（MTP 投机解码抗长上下文）
 
-详细分析与经验指南见 [`TTFT瓶颈分析.md`](./TTFT瓶颈分析.md)。
+详细分析与经验指南见 [`../docs/TTFT瓶颈分析.md`](../docs/TTFT瓶颈分析.md)。

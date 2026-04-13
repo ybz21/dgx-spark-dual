@@ -17,20 +17,25 @@
 
 参考上游：<https://github.com/albond/DGX_Spark_Qwen3.5-122B-A10B-AR-INT4>
 
-## 目录内容
+## 目录结构
 
-| 文件 | 作用 |
-|---|---|
-| [`README.md`](./README.md) | 本文件，方案总览 |
-| [`部署指南.md`](./部署指南.md) | 从零部署、参数调优、故障排查 |
-| [`docker-compose.yaml`](./docker-compose.yaml) | 固化的服务定义（单容器 host 网络） |
-| [`bench_llm.py`](./bench_llm.py) | 基准测试脚本（needle + latency + 并发压测） |
-| [`基准报告-128k.md`](./基准报告-128k.md) · [`.json`](./bench_report.json) | 基准结果（128k 上下文 · .12） |
-| [`基准报告-256k.md`](./基准报告-256k.md) · [`.json`](./bench_256k.json) | 256k 上下文对比（.8） |
-| [`TTFT曲线测试.md`](./TTFT曲线测试.md) · [`.json`](./bench_ttft_sweep.json) | 细粒度 TTFT 曲线（2k→96k） |
-| [`TTFT瓶颈分析.md`](./TTFT瓶颈分析.md) | **TTFT 瓶颈分析 + 上下文长度经验指南** |
-| [`soak_test.py`](./soak_test.py) | **长久稳定性测试**（混合负载 + 正确性探针 + 分时漂移） |
-| [`稳定性测试报告-1h.md`](./稳定性测试报告-1h.md) · [`.json`](./soak_1h_status.json) | 1 小时稳定性验证结果（1393 reqs / 100% 成功） |
+```
+122b-boost/
+├── README.md                 本文件（方案总览 + 快速开始）
+├── docs/
+│   ├── 部署指南.md           从零部署、参数调优、故障排查
+│   └── TTFT瓶颈分析.md       TTFT 瓶颈分析 + 上下文长度经验指南
+├── deploy/
+│   └── docker-compose.yaml   固化的服务定义（单容器 host 网络）
+├── scripts/
+│   ├── bench_llm.py          needle + latency + 并发压测
+│   └── soak_test.py          长久稳定性（混合负载 + 正确性探针 + 分时漂移）
+└── reports/
+    ├── 基准报告-128k.md + .json       128k 上下文基准（.12）
+    ├── 基准报告-256k.md + .json       256k 上下文对比（.8）
+    ├── TTFT曲线测试.md + .json        细粒度 TTFT 曲线（2k→96k）
+    └── 稳定性测试报告-1h.md + .json   1 小时稳定性结果（1393 reqs · 100% 成功）
+```
 
 ## 快速使用
 
@@ -38,7 +43,7 @@
 
 ```bash
 # 1. 部署（目标机器上）
-scp docker-compose.yaml ai@<host>:~/lm_scripts/
+scp deploy/docker-compose.yaml ai@<host>:~/lm_scripts/
 ssh ai@<host> 'cd ~/lm_scripts && docker compose up -d'
 
 # 2. 等待健康（≈ 10–15 min，加载 72GB 权重 + 编译 FLASHINFER）
@@ -49,11 +54,11 @@ curl http://<host>:30000/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"qwen3.5-122b-int4","messages":[{"role":"user","content":"你好"}]}'
 
-# 4. 基准
-python3 bench_llm.py --base http://<host>:30000 --out bench_report.md
+# 4. 基准测试
+python3 scripts/bench_llm.py --base http://<host>:30000 --out reports/基准报告-latest.md
 ```
 
-详见 [部署指南](./部署指南.md)。
+详见 [部署指南](./docs/部署指南.md) 和 [TTFT 瓶颈分析](./docs/TTFT瓶颈分析.md)。
 
 ## 当前已部署节点
 

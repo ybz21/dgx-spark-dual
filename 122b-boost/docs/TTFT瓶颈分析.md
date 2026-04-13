@@ -121,10 +121,10 @@ TTFT(s) ≈ prompt_tokens × 1000 ÷ prefill_tok_per_s
 
 ```bash
 # 细粒度 sweep
-python3 bench_llm.py --base http://<host>:30000 \
+python3 scripts/bench_llm.py --base http://<host>:30000 \
     --skip-needle --skip-stress \
     --latency-sizes 2000,4000,6000,8000,12000,16000,24000,32000,48000,64000,96000 \
-    --out bench_ttft_sweep.md
+    --out reports/TTFT曲线测试.md
 ```
 
-原始结果：[`bench_ttft_sweep.md`](./bench_ttft_sweep.md)、[`bench_ttft_sweep.json`](./bench_ttft_sweep.json)
+原始结果：[`reports/TTFT曲线测试.md`](../reports/TTFT曲线测试.md)、[`reports/TTFT曲线测试.json`](../reports/TTFT曲线测试.json)
