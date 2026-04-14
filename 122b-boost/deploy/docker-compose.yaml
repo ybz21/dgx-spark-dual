@@ -1,6 +1,6 @@
 # Qwen3.5-122B-A10B AutoRound INT4 (Intel) - vLLM (host: spark-c915 / 192.168.130.12)
 # Ref: https://github.com/albond/DGX_Spark_Qwen3.5-122B-A10B-AR-INT4
-# 用法: cd ~/lm_scripts && docker compose -f docker-compose-qwen-122b-a10b-ar-int4.yaml up -d
+# 用法: cd ~/dgx-spark-multinode/dgx-spark-multinode/122b-boost/deploy && docker compose up -d
 # 端口: 30000 (host network)
 # 上下文: 128K (131072 tokens)
 
@@ -25,6 +25,7 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     volumes:
       - /home/ai/models:/models
+      - ./qwen3_nothink_reasoning_parser_vllm.py:/custom/qwen3_nothink_reasoning_parser_vllm.py:ro
     entrypoint: ["/opt/entrypoint.sh"]
     command:
       - serve
@@ -36,9 +37,11 @@ services:
       - --max-model-len
       - "131072"
       - --gpu-memory-utilization
-      - "0.90"
+      - "0.80"
+      - --reasoning-parser-plugin
+      - /custom/qwen3_nothink_reasoning_parser_vllm.py
       - --reasoning-parser
-      - qwen3
+      - qwen3_nothink
       - --attention-backend
       - FLASHINFER
       - --enable-auto-tool-choice
