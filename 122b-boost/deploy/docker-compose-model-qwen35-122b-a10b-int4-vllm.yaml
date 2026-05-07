@@ -25,10 +25,19 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # 启动加速 A: 持久化 inductor + Triton cubin 到 host /cache
+      # 二次启动 AOT 直读，省 ~110s 编译。详见 docs/启动加速/README.md
+      - VLLM_CACHE_ROOT=/cache
+      - TORCHINDUCTOR_CACHE_DIR=/cache/torchinductor
+      - TRITON_CACHE_DIR=/cache/triton
     volumes:
       - /home/ai/models:/models
+      - ./vllm_cache:/cache
       - ./services/qwen3_nothink_reasoning_parser_vllm.py:/custom/qwen3_nothink_reasoning_parser_vllm.py:ro
-    entrypoint: ["/opt/entrypoint.sh"]
+      - ./runai-bootstrap.sh:/runai-bootstrap.sh:ro
+    # 启动加速 C: wrapper 在 vllm serve 之前装 runai-model-streamer，再 exec 原 entrypoint
+    # runai-bootstrap.sh 见 scripts/启动加速/runai-bootstrap.sh
+    entrypoint: ["/runai-bootstrap.sh"]
     command:
       - serve
       - /models/Qwen3.5-122B-A10B-int4-AutoRound-Intel
@@ -50,11 +59,30 @@ services:
       - --tool-call-parser
       - qwen3_coder
       - --trust-remote-code
+      # 启动加速 B: 限制 cudagraph capture 数量
+      # 默认 51 个 size → 8 个常用 size，省 ~30s capture 时间
+      - --cudagraph-capture-sizes
+      - "1"
+      - "8"
+      - "32"
+      - "64"
+      - "128"
+      - "256"
+      - "384"
+      - "512"
+      # 启动加速 D: runai_streamer 并行 stream 权重，跳过 vLLM default_loader 串行流水
+      # 实测 12.5min → 4min，详见 docs/启动加速/A-runai-streamer.md
+      - --load-format
+      - runai_streamer
+      - --model-loader-extra-config
+      - '{"concurrency":1,"memory_limit":4294967296}'
+      # MTP 投机解码: vendor 帖子推荐 k=1 (95% acceptance, 36.5 tok/s)
+      # k=2 时 acceptance 衰减到 70-85%，吞吐反而可能下降
       - --speculative-config
-      - '{"method":"mtp","num_speculative_tokens":2}'
+      - '{"method":"mtp","num_speculative_tokens":1}'
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:30000/health || exit 1"]
-      interval: 10s
+      interval: 3s        # 启动期被 docker 探到更快（之前 10s，节省 ~10s）
       timeout: 5s
-      retries: 60
+      retries: 200        # interval 减小后保持总等待时间（200×3=600s）
       start_period: 900s

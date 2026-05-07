@@ -13,6 +13,7 @@
 | 上下文 | 32K | **128K** |
 | 首 token 延迟 @ 32k | — | 17s |
 | Decode 吞吐 | — | 38–46 tok/s |
+| **启动时间** | — | **4 min（实测，A+B+C+D 启动加速生效后）** ⚡ |
 | 适合场景 | 跨节点显存扩展 | 单机极致吞吐 + 长上下文 |
 
 参考上游：<https://github.com/albond/DGX_Spark_Qwen3.5-122B-A10B-AR-INT4>
@@ -24,12 +25,21 @@
 ├── README.md                 本文件（方案总览 + 快速开始）
 ├── docs/
 │   ├── 部署指南.md           从零部署、参数调优、故障排查
-│   └── TTFT瓶颈分析.md       TTFT 瓶颈分析 + 上下文长度经验指南
+│   ├── TTFT瓶颈分析.md       TTFT 瓶颈分析 + 上下文长度经验指南
+│   └── 启动加速/             ⭐ 启动时间从 12.5min → 4min 的优化方案
+│       ├── README.md         三方案对比 + 阶段时间拆解 + 实测汇总
+│       ├── A-runai-streamer.md   方案 A（已固化）：runai_streamer 并行 stream
+│       ├── B-tensorizer-shard.md 方案 B（未实测）：tensorizer 多文件分片
+│       └── C-custom-loader.md    方案 C（未实测）：手写 custom dump+load
 ├── deploy/
-│   └── docker-compose.yaml   固化的服务定义（单容器 host 网络）
+│   ├── docker-compose-...vllm.yaml  ⭐ 已合入 A+B+C+D 启动加速
+│   └── runai-bootstrap.sh           entrypoint wrapper：装 runai-model-streamer
 ├── scripts/
-│   ├── bench_llm.py          needle + latency + 并发压测
-│   └── soak_test.py          长久稳定性（混合负载 + 正确性探针 + 分时漂移）
+│   ├── bench_llm.py                 needle + latency + 并发压测
+│   ├── soak_test.py                 长久稳定性（混合负载 + 正确性探针 + 分时漂移）
+│   └── 启动加速/                    PoC 自动化脚本（A/B/C 一键复现 + 对比）
+│       ├── run-all.sh, A-runai.sh, B-shard.sh, C-custom.sh
+│       └── _common.sh, launch-overnight.sh, runai-bootstrap.sh
 └── reports/
     ├── 基准报告-128k.md + .json       128k 上下文基准（.12）
     ├── 基准报告-256k.md + .json       256k 上下文对比（.8）
