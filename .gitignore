@@ -1,3 +1,5 @@
 runtime/.env
 runtime/.cache/
 *.log
+eval/scripts/datasets/
+__pycache__/
