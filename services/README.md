@@ -13,8 +13,8 @@
 `services/qwen3_nothink_reasoning_parser_vllm.py` —— `qwen3_nothink` reasoning parser，
 被 **两个模型的 compose 同时引用**：
 
-- [`../qwen3.5-122b-a10b/deploy/docker-compose-model-qwen35-122b-a10b-int4-vllm.yaml`](../qwen3.5-122b-a10b/deploy/docker-compose-model-qwen35-122b-a10b-int4-vllm.yaml)
-- [`../qwen3.5-35b-a3b/deploy/docker-compose-model-qwen35-35b-nvfp4-vllm.yaml`](../qwen3.5-35b-a3b/deploy/docker-compose-model-qwen35-35b-nvfp4-vllm.yaml)
+- [`../qwen3.5-122b-a10b/deploy/docker-compose-model-qwen35-122b-a10b-int4-vllm.yaml`](../models/qwen3.5-122b-a10b/deploy/docker-compose-model-qwen35-122b-a10b-int4-vllm.yaml)
+- [`../qwen3.5-35b-a3b/deploy/docker-compose-model-qwen35-35b-nvfp4-vllm.yaml`](../models/qwen3.5-35b-a3b/deploy/docker-compose-model-qwen35-35b-nvfp4-vllm.yaml)
 
 改它会同时影响这两个模型。
 

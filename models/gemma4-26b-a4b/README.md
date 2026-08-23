@@ -13,5 +13,5 @@
 
 ## 用法
 
-预设文件是给根目录 [`../quick-start.sh`](../quick-start.sh) 的运行时（[`../runtime/`](../runtime)）用的参数参考：
+预设文件是给根目录 [`../../quick-start.sh`](../../quick-start.sh) 的运行时（[`../../runtime/`](../../runtime)）用的参数参考：
 `quick-start.sh` 本身不会自动加载它，需要手工把里面的值填进 `runtime/.env` 或命令行参数。

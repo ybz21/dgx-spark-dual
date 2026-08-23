@@ -25,6 +25,6 @@
 
 ## 评测
 
-跨模型质量/速度对比见 [`../eval/`](../eval)，其中
-[`../eval/reports/ds4-vs-qwen-performance.md`](../eval/reports/ds4-vs-qwen-performance.md)
+跨模型质量/速度对比见 [`../../eval/`](../../eval)，其中
+[`../../eval/reports/ds4-vs-qwen-performance.md`](../../eval/reports/ds4-vs-qwen-performance.md)
 是针对 ds4 GGUF 方案的。**vLLM DSpark 方案尚未进入 eval 流程。**

@@ -1,21 +1,22 @@
 # DGX Spark 大模型推理部署
 
 DGX Spark (GB10) 上的大模型部署方案合集：单节点 / 双节点（ConnectX-7 光缆 + TP=2）都有。
-**按模型名建文件夹**，每个模型目录下是该模型的一套或多套部署方案 + 实测报告。
+**所有模型部署集中在 [`models/`](models) 下，按模型名建文件夹**，
+每个模型目录下是该模型的一套或多套部署方案 + 实测报告。
 
 ## 模型索引
 
 | 模型 | 目录 | 方案 | 节点 | 上下文 | 单流 decode |
 |---|---|---|---|---|---|
-| **DeepSeek-V4-Flash** | [`deepseek-v4-flash/`](deepseek-v4-flash) | vLLM + DSpark + NVFP4 KV | 2 | 1M | 69–85 tok/s |
+| **DeepSeek-V4-Flash** | [`models/deepseek-v4-flash/`](models/deepseek-v4-flash) | vLLM + DSpark + NVFP4 KV | 2 | 1M | 69–85 tok/s |
 | | | ds4 引擎 + IQ2 GGUF | 1 | 32K–512K | ~38 tok/s |
-| **Qwen3.5-122B-A10B** | [`qwen3.5-122b-a10b/`](qwen3.5-122b-a10b) | vLLM INT4 AutoRound + MTP-2 | 1 | 128K | 38–46 tok/s |
+| **Qwen3.5-122B-A10B** | [`models/qwen3.5-122b-a10b/`](models/qwen3.5-122b-a10b) | vLLM INT4 AutoRound + MTP-2 | 1 | 128K | 38–46 tok/s |
 | | | vLLM NVFP4 TP=2（`quick-start.sh`） | 2 | 32K | ~17 tok/s |
-| **Qwen3.5-35B-A3B** | [`qwen3.5-35b-a3b/`](qwen3.5-35b-a3b) | vLLM NVFP4 | 1 | 32K | ~30 tok/s |
-| **Qwen3.5-397B-A17B** | [`qwen3.5-397b-a17b/`](qwen3.5-397b-a17b) | vLLM INT4 AutoRound TP=2 | 2 | — | 仅配置留档 |
-| **Laguna-S-2.1** | [`laguna-s-2.1/`](laguna-s-2.1) | vLLM NVFP4 + DFlash 投机 | 1 | — | 见目录 |
-| **Gemma 4 26B-A4B** | [`gemma4-26b-a4b/`](gemma4-26b-a4b) | vLLM BF16 | 1 | — | 仅配置留档 |
-| **BGE Embedding** | [`bge-embedding/`](bge-embedding) | embedding-server | 1 | — | 未验证 |
+| **Qwen3.5-35B-A3B** | [`models/qwen3.5-35b-a3b/`](models/qwen3.5-35b-a3b) | vLLM NVFP4 | 1 | 32K | ~30 tok/s |
+| **Qwen3.5-397B-A17B** | [`models/qwen3.5-397b-a17b/`](models/qwen3.5-397b-a17b) | vLLM INT4 AutoRound TP=2 | 2 | — | 仅配置留档 |
+| **Laguna-S-2.1** | [`models/laguna-s-2.1/`](models/laguna-s-2.1) | vLLM NVFP4 + DFlash 投机 | 1 | — | 见目录 |
+| **Gemma 4 26B-A4B** | [`models/gemma4-26b-a4b/`](models/gemma4-26b-a4b) | vLLM BF16 | 1 | — | 仅配置留档 |
+| **BGE Embedding** | [`models/bge-embedding/`](models/bge-embedding) | embedding-server | 1 | — | 未验证 |
 
 - 跨模型评测：[`eval/`](eval)
 - 配套服务（open-webui / 代理层 / 共享 vLLM 插件）：[`services/`](services)
@@ -113,7 +114,7 @@ spark01 (head)                    spark02 (worker)
 `quick-start.sh` 的 `.env` 预设按模型分散在各模型文件夹的 `presets/` 下:
 
 ```
-qwen3.5-122b-a10b/presets/
+models/qwen3.5-122b-a10b/presets/
 ├── qwen3.5-122b-nvfp4.env       — Qwen3.5 122B NVFP4 (TP1)
 ├── qwen3.5-122b-nvfp4-tp2.env   — Qwen3.5 122B NVFP4 (TP2)
 ├── qwen3.5-122b-fp8.env         — Qwen3.5 122B FP8 (TP2)
@@ -121,8 +122,8 @@ qwen3.5-122b-a10b/presets/
 ├── redhatai-122b-nvfp4.env      — RedHatAI NVFP4 (TP1)
 ├── wangzhang-122b-fp8.env       — abliterated FP8 (TP2)
 └── wangzhang-122b-nvfp4.env     — abliterated NVFP4 (TP1)
-qwen3.5-397b-a17b/presets/qwen3.5-397b-int4.env   — Qwen3.5 397B INT4 (TP2)
-gemma4-26b-a4b/presets/gemma4-26b-a4b.env         — Gemma 4 26B MoE (TP1)
+models/qwen3.5-397b-a17b/presets/qwen3.5-397b-int4.env   — Qwen3.5 397B INT4 (TP2)
+models/gemma4-26b-a4b/presets/gemma4-26b-a4b.env         — Gemma 4 26B MoE (TP1)
 ```
 
 > ⚠️ `quick-start.sh` **不会自动读取**这些 `.env`，它们是参数参考；
@@ -154,17 +155,20 @@ dgx-spark-multinode/
 │   ├── .env.example            # 配置模板
 │   └── patches/                # DGX Spark SM121 兼容补丁
 │
-├── deepseek-v4-flash/          # ── 按模型名分目录 ──
-│   ├── README.md               #    两套方案对比 + 选型
-│   ├── vllm-dspark-2x-nvfp4/   #    双节点 vLLM + DSpark，1M 上下文
-│   └── ds4-gguf-iq2-1x/        #    单节点 ds4 引擎 + IQ2 GGUF
-├── qwen3.5-122b-a10b/          #    INT4 AutoRound 单机 + MTP-2
-│   └── README.md · deploy/ docs/ scripts/ reports/ presets/
-├── qwen3.5-35b-a3b/            #    NVFP4 单机，和 122B 互斥
-├── qwen3.5-397b-a17b/          #    仅配置留档
-├── laguna-s-2.1/
-├── gemma4-26b-a4b/             #    仅配置留档
-├── bge-embedding/              #    未验证
+├── models/                     # ── 所有模型部署，按模型名分目录 ──
+│   │                           #    注：这里放的是部署方案，不是权重；
+│   │                           #    权重在目标机的 ~/models/ 下
+│   ├── deepseek-v4-flash/
+│   │   ├── README.md           #    两套方案对比 + 选型
+│   │   ├── vllm-dspark-2x-nvfp4/   # 双节点 vLLM + DSpark，1M 上下文
+│   │   └── ds4-gguf-iq2-1x/        # 单节点 ds4 引擎 + IQ2 GGUF
+│   ├── qwen3.5-122b-a10b/      #    INT4 AutoRound 单机 + MTP-2
+│   │   └── README.md · deploy/ docs/ scripts/ reports/ presets/
+│   ├── qwen3.5-35b-a3b/        #    NVFP4 单机，和 122B 互斥
+│   ├── qwen3.5-397b-a17b/      #    仅配置留档
+│   ├── laguna-s-2.1/
+│   ├── gemma4-26b-a4b/         #    仅配置留档
+│   └── bge-embedding/          #    未验证
 │
 ├── services/                   # 配套服务：open-webui / 代理层 / 共享 vLLM 插件
 ├── eval/                       # 跨模型质量 / 速度评测
