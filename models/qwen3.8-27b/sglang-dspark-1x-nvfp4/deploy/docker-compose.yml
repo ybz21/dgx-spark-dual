@@ -1,0 +1,80 @@
+# Qwen3.8-27B-NVFP4 on SGLang，DSpark 投机解码（single DGX Spark / GB10 / aarch64）
+# 目标机: 192.168.130.48 (box010)   端口: :8000   model id = qwen3.8-27b
+# 方案出处: https://forums.developer.nvidia.com/t/qwen3-8-27b-at-34-38-tok-s-on-dgx-spark-open-source-one-command-setup-sglang-nvfp4-dspark/380257
+#
+# ⚠️ 统一内存互斥：与 vLLM 方案(deploy-vllm)、与同机 :30001 的 122B 不能同时占内存。
+#    起本方案前先 `docker compose down`（vLLM 侧）并确认 ≥60 GiB 空闲。
+#
+# 镜像: LAN 私仓的加速版 SGLang（cu13）。ghcr.io/docker hub 在本网被墙，用 LAN 镜像。
+#    ⚠️ DSpark 是打过补丁的 SGLang 才有的算法；部署前先验证该镜像支持:
+#       docker run --rm <IMAGE> python3 -m sglang.launch_server --help | grep -i dspark
+#    若不支持 DSPARK，可退到 EAGLE3/DFlash（换 --speculative-algorithm）或用 vLLM 方案。
+services:
+  qwen38-sglang:
+    image: ${SGLANG_IMAGE:-192.168.130.23:5000/sglang-dev-cu13-accel:latest}
+    container_name: qwen38-sglang
+    restart: unless-stopped
+    runtime: nvidia
+    network_mode: host                # SGLang 建议 host 网络
+    ipc: host
+    shm_size: "16g"
+    volumes:
+      - ${MODELS_DIR:-/home/ai/models}:/models:ro
+      - ./.cache:/root/.cache
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - HF_HUB_OFFLINE=1
+      - TORCHINDUCTOR_CACHE_DIR=/root/.cache/inductor
+    # SGLang 镜像通常 ENTRYPOINT 已是 python3 -m sglang.launch_server；
+    # 这里显式指定以防不同镜像入口不一致。
+    entrypoint: ["python3", "-m", "sglang.launch_server"]
+    command:
+      - --model-path
+      - /models/Qwen3.8-27B-NVFP4
+      - --served-model-name
+      - qwen3.8-27b
+      - --trust-remote-code
+      - --tp-size
+      - "1"
+      # ---- DSpark 投机解码 ----
+      - --speculative-algorithm
+      - DSPARK
+      - --speculative-draft-model-path
+      - /models/RadixArk-Qwen3.8-27B-DSpark
+      - --speculative-dspark-block-size
+      - "7"
+      - --num-continuous-decode-steps
+      - "2"
+      # ---- 内存/性能 ----
+      - --mem-fraction-static
+      - "0.50"                        # GB10 统一内存关键参数（论坛强调）
+      - --attention-backend
+      - flashinfer
+      - --enable-torch-compile
+      - --torch-compile-max-bs
+      - "4"
+      - --chunked-prefill-size
+      - "8192"
+      - --max-running-requests
+      - "8"
+      - --context-length
+      - "32768"                       # 首启保守；内存宽裕可调大
+      - --max-mamba-cache-size
+      - "96"                          # qwen3_5 混合线性注意力需要 mamba 缓存
+      # ---- 解析器 ----
+      - --reasoning-parser
+      - qwen3
+      - --tool-call-parser
+      - qwen3_coder
+      # ---- 监听 ----
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 30
+      start_period: 900s              # torch.compile 首启编译较久，给足时间

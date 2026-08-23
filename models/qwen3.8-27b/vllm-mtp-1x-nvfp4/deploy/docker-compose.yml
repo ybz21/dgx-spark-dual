@@ -1,0 +1,67 @@
+# Qwen3.8-27B-NVFP4 on vLLM，MTP 投机解码（single DGX Spark / GB10 / aarch64）
+# 目标机: 192.168.130.48 (box010)
+# 起服务:  docker compose up -d   →  OpenAI 接口 http://<host>:8000/v1
+#          model id = qwen3.8-27b
+#
+# ⚠️ 统一内存: 权重 ~26GB + KV ~27GB。gpu-memory-utilization=0.45 时约占 ~55GB。
+#    box010 是生产机（blade 栈），启动前务必确认已腾出 ≥60GB 空闲内存。
+#
+# 镜像: Qwen3.8-27B 的架构就是 `Qwen3_5ForConditionalGeneration`(model_type=qwen3_5)——
+#    与本仓库既有 Qwen3.5 部署同族。box010 上已有的 LAN 镜像
+#    `192.168.130.23:5000/vllm-qwen35-v2:v26041616` 正在服务 qwen3.5 系列(含 NVFP4)，
+#    直接复用即可，无需联网拉镜像(ghcr.io 在本网被墙)。
+services:
+  qwen38-vllm:
+    image: ${VLLM_IMAGE:-192.168.130.23:5000/vllm-qwen35-v2:v26041616}
+    container_name: qwen38-vllm
+    restart: unless-stopped
+    runtime: nvidia
+    ipc: host                         # vLLM 需要大 /dev/shm，用 host IPC 最稳
+    ports:
+      - "8000:8000"
+    volumes:
+      - ${MODELS_DIR:-/home/ai/models}:/models:ro
+    # 主模型: unsloth/Qwen3.8-27B-NVFP4（与 SGLang/DSpark 方案共用同一份权重）
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - HF_HUB_OFFLINE=1              # 离线，模型已本地化
+      - VLLM_NO_USAGE_STATS=1
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    command:
+      - --model
+      - /models/Qwen3.8-27B-NVFP4
+      - --served-model-name
+      - qwen3.8-27b
+      - --trust-remote-code           # qwen3_5 多模态/混合线性注意力架构
+      - --tensor-parallel-size
+      - "1"
+      - --gpu-memory-utilization
+      - "0.45"                        # 生产机共用内存，压低到 0.45（≈55GB）
+      - --max-model-len
+      - "32768"                       # 首启保守；内存宽裕可调到 262144
+      - --max-num-seqs
+      - "4"
+      - --max-num-batched-tokens
+      - "8192"
+      - --enable-chunked-prefill
+      - --enable-prefix-caching
+      - --reasoning-parser
+      - qwen3
+      - --tool-call-parser
+      - qwen3_xml
+      - --enable-auto-tool-choice
+      - --distributed-executor-backend
+      - mp
+      - --speculative-config
+      - '{"method":"mtp","num_speculative_tokens":5}'
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 20
+      start_period: 600s              # 加载权重 + 构建 MTP 投机栈，给足冷启时间

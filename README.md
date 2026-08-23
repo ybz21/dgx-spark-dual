@@ -13,6 +13,8 @@ DGX Spark (GB10) 上的大模型部署方案合集：单节点 / 双节点（Con
 | **Qwen3.5-122B-A10B** | [`models/qwen3.5-122b-a10b/`](models/qwen3.5-122b-a10b) | vLLM INT4 AutoRound + MTP-2 | 1 | 128K | 38–46 tok/s |
 | | | vLLM NVFP4 TP=2（`quick-start.sh`） | 2 | 32K | ~17 tok/s |
 | **Qwen3.5-35B-A3B** | [`models/qwen3.5-35b-a3b/`](models/qwen3.5-35b-a3b) | vLLM NVFP4 | 1 | 32K | ~30 tok/s |
+| **Qwen3.8-27B** | [`models/qwen3.8-27b/`](models/qwen3.8-27b) | vLLM + MTP（NVFP4） | 1 | 32K–1M | ~24–26 tok/s |
+| | | SGLang + DSpark（NVFP4） | 1 | 32K | ~34–38 tok/s |
 | **Qwen3.5-397B-A17B** | [`models/qwen3.5-397b-a17b/`](models/qwen3.5-397b-a17b) | vLLM INT4 AutoRound TP=2 | 2 | — | 仅配置留档 |
 | **Laguna-S-2.1** | [`models/laguna-s-2.1/`](models/laguna-s-2.1) | vLLM NVFP4 + DFlash 投机 | 1 | — | 见目录 |
 | **Gemma 4 26B-A4B** | [`models/gemma4-26b-a4b/`](models/gemma4-26b-a4b) | vLLM BF16 | 1 | — | 仅配置留档 |
