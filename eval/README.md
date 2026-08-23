@@ -6,11 +6,15 @@
 
 | 模型 | 部署 | 端点 | model id |
 |---|---|---|---|
-| DeepSeek-V4-Flash | [../ds4-flash-iq2-dspark](../ds4-flash-iq2-dspark) | `:8000` | `deepseek-v4-flash` |
-| Laguna-S-2.1-NVFP4 | [../laguna-s2.1-nvfp4-dflash](../laguna-s2.1-nvfp4-dflash) | `:8000` | `laguna-s2.1` |
+| DeepSeek-V4-Flash | [../deepseek-v4-flash/ds4-gguf-iq2-1x](../deepseek-v4-flash/ds4-gguf-iq2-1x) | `:8000` | `deepseek-v4-flash` |
+| DeepSeek-V4-Flash-0731 | [../deepseek-v4-flash/vllm-dspark-2x-nvfp4](../deepseek-v4-flash/vllm-dspark-2x-nvfp4) | `:8888` | `deepseek-v4-flash-0731`（未纳入本轮评测） |
+| Laguna-S-2.1-NVFP4 | [../laguna-s-2.1](../laguna-s-2.1) | `:8000` | `laguna-s2.1` |
 | Qwen3.5-122B-A10B | vLLM (INT4) | `:30001` | `qwen3.5-122b-int4` |
 
 > ⚠️ DS4 与 Laguna 在同一台机的统一内存里**互斥**，无法同时在线；因此三方并非全程同批。报告中会标注哪些是同批、哪些是历史参考。
+>
+> ⚠️ 双节点的 `deepseek-v4-flash-0731`（vLLM + DSpark）**还没跑过本目录的评测**，
+> 只有部署侧的吞吐基准。它和 ds4 GGUF 方案同样互斥（共用 `192.168.130.12`）。
 
 ## 脚本
 
@@ -61,7 +65,7 @@ python3 bench_code.py   --n-he 30 --n-mbpp 30   # Laguna 重推理，token 上�
 
 - [`reports/laguna-vs-qwen.md`](reports/laguna-vs-qwen.md) — Laguna vs Qwen 完整对比(编码+质量+性能)
 - [`reports/ds4-vs-qwen-performance.md`](reports/ds4-vs-qwen-performance.md) — DS4 vs Qwen 性能(TTFT/TPS/prefix-cache/大海捞针/mini-bench)
-- [`../ds4-flash-iq2-dspark/docs/deploy-report.md`](../ds4-flash-iq2-dspark/docs/deploy-report.md) — DS4 部署 + 基准详报
+- [`../deepseek-v4-flash/ds4-gguf-iq2-1x/docs/deploy-report.md`](../deepseek-v4-flash/ds4-gguf-iq2-1x/docs/deploy-report.md) — DS4 部署 + 基准详报
 
 ## 判分方法说明
 

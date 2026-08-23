@@ -1,10 +1,10 @@
-# Qwen3.5-122B-A10B AutoRound INT4 · 单节点 Boost
+# Qwen3.5-122B-A10B
 
 单节点 DGX Spark (GB10) 跑 Qwen3.5-122B-A10B INT4 量化版，vLLM + FLASHINFER + **MTP 投机解码**。
 
-和本仓库根目录的 **多节点 TP=2 NVFP4** 方案互为补充：
+和仓库根目录 `quick-start.sh` 的 **多节点 TP=2 NVFP4** 方案互为补充：
 
-|  | 多节点 (../) | **本方案 (122b-boost/)** |
+|  | 多节点 (根目录 quick-start.sh) | **本方案 (qwen3.5-122b-a10b/)** |
 |---|---|---|
 | 模型量化 | NVFP4 | INT4 AutoRound (Intel) |
 | 部署 | 2× DGX Spark，TP=2 over ConnectX-7 | **单节点** |
@@ -21,10 +21,11 @@
 ## 目录结构
 
 ```
-122b-boost/
+qwen3.5-122b-a10b/
 ├── README.md                 本文件（方案总览 + 快速开始）
 ├── docs/
 │   ├── 部署指南.md           从零部署、参数调优、故障排查
+│   ├── INT4-单机部署指南.md  内存分析 + SM121 镜像构建 + MTP-2 细节
 │   ├── TTFT瓶颈分析.md       TTFT 瓶颈分析 + 上下文长度经验指南
 │   └── 启动加速/             ⭐ 启动时间从 12.5min → 4min 的优化方案
 │       ├── README.md         三方案对比 + 阶段时间拆解 + 实测汇总

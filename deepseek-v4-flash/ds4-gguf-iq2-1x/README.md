@@ -4,7 +4,7 @@
 
 和本仓库其它方案的区别：这不是 vLLM，而是 antirez 手写的 CUDA 推理引擎（C/CUDA），为 GB10/SM121 专门优化，主打**极长上下文**（原生稀疏注意力，实测 500K+）和 in-process 快速路径。
 
-|  | 本方案 (ds4-flash-iq2-dspark/) | vLLM 方案 (../laguna-s2.1-nvfp4-dflash, ../122b-boost) |
+|  | 本方案 (ds4-gguf-iq2-1x/) | vLLM 方案 (../../laguna-s-2.1, ../../qwen3.5-122b-a10b) |
 |---|---|---|
 | 引擎 | antirez/ds4（自研 CUDA） | vLLM |
 | 模型 | DeepSeek-V4-Flash | Laguna / Qwen 等 |
