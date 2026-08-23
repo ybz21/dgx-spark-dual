@@ -33,8 +33,9 @@ qwen3.5-122b-a10b/
 │       ├── B-tensorizer-shard.md 方案 B（未实测）：tensorizer 多文件分片
 │       └── C-custom-loader.md    方案 C（未实测）：手写 custom dump+load
 ├── deploy/
-│   ├── docker-compose-...vllm.yaml  ⭐ 已合入 A+B+C+D 启动加速
+│   ├── docker-compose-model-qwen35-122b-a10b-int4-vllm.yaml  ⭐ 已合入 A+B+C+D 启动加速
 │   └── runai-bootstrap.sh           entrypoint wrapper：装 runai-model-streamer
+├── presets/                  quick-start.sh 的 .env 参数参考（7 个 122B 变体）
 ├── scripts/
 │   ├── bench_llm.py                 needle + latency + 并发压测
 │   ├── soak_test.py                 长久稳定性（混合负载 + 正确性探针 + 分时漂移）
@@ -54,7 +55,8 @@ qwen3.5-122b-a10b/
 
 ```bash
 # 1. 部署（目标机器上）
-scp deploy/docker-compose.yaml ai@<host>:~/lm_scripts/
+scp deploy/docker-compose-model-qwen35-122b-a10b-int4-vllm.yaml ai@<host>:~/lm_scripts/
+scp -r ../services/services ai@<host>:~/lm_scripts/      # 依赖 qwen3_nothink parser
 ssh ai@<host> 'cd ~/lm_scripts && docker compose up -d'
 
 # 2. 等待健康（≈ 10–15 min，加载 72GB 权重 + 编译 FLASHINFER）

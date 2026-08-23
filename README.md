@@ -11,13 +11,19 @@ DGX Spark (GB10) 上的大模型部署方案合集：单节点 / 双节点（Con
 | | | ds4 引擎 + IQ2 GGUF | 1 | 32K–512K | ~38 tok/s |
 | **Qwen3.5-122B-A10B** | [`qwen3.5-122b-a10b/`](qwen3.5-122b-a10b) | vLLM INT4 AutoRound + MTP-2 | 1 | 128K | 38–46 tok/s |
 | | | vLLM NVFP4 TP=2（`quick-start.sh`） | 2 | 32K | ~17 tok/s |
+| **Qwen3.5-35B-A3B** | [`qwen3.5-35b-a3b/`](qwen3.5-35b-a3b) | vLLM NVFP4 | 1 | 32K | ~30 tok/s |
+| **Qwen3.5-397B-A17B** | [`qwen3.5-397b-a17b/`](qwen3.5-397b-a17b) | vLLM INT4 AutoRound TP=2 | 2 | — | 仅配置留档 |
 | **Laguna-S-2.1** | [`laguna-s-2.1/`](laguna-s-2.1) | vLLM NVFP4 + DFlash 投机 | 1 | — | 见目录 |
+| **Gemma 4 26B-A4B** | [`gemma4-26b-a4b/`](gemma4-26b-a4b) | vLLM BF16 | 1 | — | 仅配置留档 |
+| **BGE Embedding** | [`bge-embedding/`](bge-embedding) | embedding-server | 1 | — | 未验证 |
 
-跨模型评测：[`eval/`](eval)
+- 跨模型评测：[`eval/`](eval)
+- 配套服务（open-webui / 代理层 / 共享 vLLM 插件）：[`services/`](services)
 
 ## 双节点通用入口 (quick-start.sh)
 
-`quick-start.sh` 是 Qwen 系 NVFP4 双节点 TP=2 的一键脚本，模型预设在 [`presets/`](presets)。
+`quick-start.sh` 是 NVFP4 双节点 TP=2 的一键脚本，容器运行时在 [`runtime/`](runtime)。
+各模型的 `.env` 预设放在**各自模型文件夹的 `presets/` 下**（脚本不自动加载，是参数参考）。
 其它模型走各自目录下的部署文件。
 
 ```bash
@@ -104,20 +110,23 @@ spark01 (head)                    spark02 (worker)
 
 ## 模型预设
 
-`presets/` 目录下提供了验证过的 `quick-start.sh` 模型配置:
+`quick-start.sh` 的 `.env` 预设按模型分散在各模型文件夹的 `presets/` 下:
 
-```bash
-ls presets/
-# gemma4-26b-a4b.env         — Gemma 4 26B MoE (TP1)
-# qwen3.5-122b-nvfp4.env     — Qwen3.5 122B NVFP4 (TP1)
-# qwen3.5-122b-nvfp4-tp2.env — Qwen3.5 122B NVFP4 (TP2)
-# qwen3.5-122b-fp8.env       — Qwen3.5 122B FP8 (TP2)
-# qwen3.5-397b-int4.env      — Qwen3.5 397B INT4 (TP2)
-# intel-122b-int4.env         — Intel INT4 AutoRound (TP1)
-# redhatai-122b-nvfp4.env     — RedHatAI NVFP4 (TP1)
-# wangzhang-122b-fp8.env      — abliterated FP8 (TP2)
-# wangzhang-122b-nvfp4.env    — abliterated NVFP4 (TP1)
 ```
+qwen3.5-122b-a10b/presets/
+├── qwen3.5-122b-nvfp4.env       — Qwen3.5 122B NVFP4 (TP1)
+├── qwen3.5-122b-nvfp4-tp2.env   — Qwen3.5 122B NVFP4 (TP2)
+├── qwen3.5-122b-fp8.env         — Qwen3.5 122B FP8 (TP2)
+├── intel-122b-int4.env          — Intel INT4 AutoRound (TP1)
+├── redhatai-122b-nvfp4.env      — RedHatAI NVFP4 (TP1)
+├── wangzhang-122b-fp8.env       — abliterated FP8 (TP2)
+└── wangzhang-122b-nvfp4.env     — abliterated NVFP4 (TP1)
+qwen3.5-397b-a17b/presets/qwen3.5-397b-int4.env   — Qwen3.5 397B INT4 (TP2)
+gemma4-26b-a4b/presets/gemma4-26b-a4b.env         — Gemma 4 26B MoE (TP1)
+```
+
+> ⚠️ `quick-start.sh` **不会自动读取**这些 `.env`，它们是参数参考；
+> 实际用的是 [`runtime/.env.example`](runtime/.env.example) 和命令行参数。
 
 ## API
 
@@ -138,8 +147,7 @@ curl http://192.168.130.16:30000/v1/chat/completions \
 ```
 dgx-spark-multinode/
 ├── README.md
-├── quick-start.sh              # 双节点 NVFP4 TP=2 一键入口（Qwen 系）
-├── presets/                    # quick-start.sh 的模型预设 (.env)
+├── quick-start.sh              # 双节点 NVFP4 TP=2 一键入口
 ├── runtime/                    # quick-start.sh 的容器运行时
 │   ├── docker-compose.yml      # vLLM head + worker 编排
 │   ├── entrypoint.sh           # 容器入口 (TP1直连/TP2 Ray)
@@ -150,13 +158,17 @@ dgx-spark-multinode/
 │   ├── README.md               #    两套方案对比 + 选型
 │   ├── vllm-dspark-2x-nvfp4/   #    双节点 vLLM + DSpark，1M 上下文
 │   └── ds4-gguf-iq2-1x/        #    单节点 ds4 引擎 + IQ2 GGUF
-├── qwen3.5-122b-a10b/
-│   ├── README.md
-│   ├── deploy/ docs/ scripts/ reports/
+├── qwen3.5-122b-a10b/          #    INT4 AutoRound 单机 + MTP-2
+│   └── README.md · deploy/ docs/ scripts/ reports/ presets/
+├── qwen3.5-35b-a3b/            #    NVFP4 单机，和 122B 互斥
+├── qwen3.5-397b-a17b/          #    仅配置留档
 ├── laguna-s-2.1/
+├── gemma4-26b-a4b/             #    仅配置留档
+├── bge-embedding/              #    未验证
 │
+├── services/                   # 配套服务：open-webui / 代理层 / 共享 vLLM 插件
 ├── eval/                       # 跨模型质量 / 速度评测
-└── legacy/                     # 旧版 SGLang 部署脚本
+└── legacy/                     # 旧版 SGLang 部署脚本（已废弃）
 ```
 
 ## 前置准备
