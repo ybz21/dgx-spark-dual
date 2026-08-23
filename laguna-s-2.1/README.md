@@ -2,7 +2,7 @@
 
 单节点 DGX Spark (GB10) 用 **vLLM v0.26.0** 跑 poolside 的 **Laguna-S-2.1-NVFP4**（代码专精 MoE 模型），并用 **DFlash（EAGLE3 草稿模型）做投机解码**。NVFP4 正好吃 GB10 的 Blackwell FP4。
 
-|  | 本方案 (laguna-s2.1-nvfp4-dflash/) |
+|  | 本方案 (laguna-s-2.1/) |
 |---|---|
 | 引擎 | vLLM v0.26.0 (arm64) |
 | 模型 | Laguna-S-2.1-NVFP4（MoE 256 专家 / 10 激活 / 48 层，67 GiB） |
@@ -70,7 +70,7 @@ curl http://<host>:8000/v1/chat/completions \
 
 ## 注意事项
 
-- **统一内存互斥**：占 ~110 GiB，和同机 ds4-flash-iq2-dspark / 其它大模型不能同时跑。切换前 `docker compose down`。
+- **统一内存互斥**：占 ~110 GiB，和同机 ../deepseek-v4-flash/ / 其它大模型不能同时跑。切换前 `docker compose down`。
 - 冷启约 10 分钟（加载 72 GiB + EAGLE3 草稿 + KV profiling）；compose 已配 `restart: unless-stopped` 和 600s health start_period。
 - ModelScope CLI 建议装独立 venv（部分机器系统 apt 有依赖冲突）。
 

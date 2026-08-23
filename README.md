@@ -1,8 +1,24 @@
-# DGX Spark 双节点大模型推理部署
+# DGX Spark 大模型推理部署
 
-通过光缆 (ConnectX-7) 连接两台 DGX Spark (GB10)，使用 vLLM + Ray 实现跨节点 Tensor Parallelism 大模型推理。
+DGX Spark (GB10) 上的大模型部署方案合集：单节点 / 双节点（ConnectX-7 光缆 + TP=2）都有。
+**按模型名建文件夹**，每个模型目录下是该模型的一套或多套部署方案 + 实测报告。
 
-## 快速开始
+## 模型索引
+
+| 模型 | 目录 | 方案 | 节点 | 上下文 | 单流 decode |
+|---|---|---|---|---|---|
+| **DeepSeek-V4-Flash** | [`deepseek-v4-flash/`](deepseek-v4-flash) | vLLM + DSpark + NVFP4 KV | 2 | 1M | 69–85 tok/s |
+| | | ds4 引擎 + IQ2 GGUF | 1 | 32K–512K | ~38 tok/s |
+| **Qwen3.5-122B-A10B** | [`qwen3.5-122b-a10b/`](qwen3.5-122b-a10b) | vLLM INT4 AutoRound + MTP-2 | 1 | 128K | 38–46 tok/s |
+| | | vLLM NVFP4 TP=2（`quick-start.sh`） | 2 | 32K | ~17 tok/s |
+| **Laguna-S-2.1** | [`laguna-s-2.1/`](laguna-s-2.1) | vLLM NVFP4 + DFlash 投机 | 1 | — | 见目录 |
+
+跨模型评测：[`eval/`](eval)
+
+## 双节点通用入口 (quick-start.sh)
+
+`quick-start.sh` 是 Qwen 系 NVFP4 双节点 TP=2 的一键脚本，模型预设在 [`presets/`](presets)。
+其它模型走各自目录下的部署文件。
 
 ```bash
 bash quick-start.sh <工作节点IP> <模型路径>
@@ -84,13 +100,14 @@ spark01 (head)                    spark02 (worker)
 |------|------|----|------|------|
 | Qwen3.5-122B-A10B-NVFP4 | compressed-tensors | 2 | vllm-spark:v019-ngc2603 | ~17 t/s |
 | Qwen3.5-35B-A3B-NVFP4 | modelopt_fp4 | 1 | sglang-dev-cu13-accel | ~30 t/s |
+| DeepSeek-V4-Flash-0731 | NVFP4 KV + DSpark | 2 | vllm-dspark-runtime:dspark-nvfp4-stage-c | 69–85 t/s |
 
 ## 模型预设
 
-`models/` 目录下提供了验证过的模型配置:
+`presets/` 目录下提供了验证过的 `quick-start.sh` 模型配置:
 
 ```bash
-ls models/
+ls presets/
 # gemma4-26b-a4b.env         — Gemma 4 26B MoE (TP1)
 # qwen3.5-122b-nvfp4.env     — Qwen3.5 122B NVFP4 (TP1)
 # qwen3.5-122b-nvfp4-tp2.env — Qwen3.5 122B NVFP4 (TP2)
@@ -120,14 +137,25 @@ curl http://192.168.130.16:30000/v1/chat/completions \
 
 ```
 dgx-spark-multinode/
-├── quick-start.sh              # 唯一入口
 ├── README.md
-├── runtime/                    # 容器运行时配置
+├── quick-start.sh              # 双节点 NVFP4 TP=2 一键入口（Qwen 系）
+├── presets/                    # quick-start.sh 的模型预设 (.env)
+├── runtime/                    # quick-start.sh 的容器运行时
 │   ├── docker-compose.yml      # vLLM head + worker 编排
 │   ├── entrypoint.sh           # 容器入口 (TP1直连/TP2 Ray)
 │   ├── .env.example            # 配置模板
 │   └── patches/                # DGX Spark SM121 兼容补丁
-├── models/                     # 模型预设 (.env 文件)
+│
+├── deepseek-v4-flash/          # ── 按模型名分目录 ──
+│   ├── README.md               #    两套方案对比 + 选型
+│   ├── vllm-dspark-2x-nvfp4/   #    双节点 vLLM + DSpark，1M 上下文
+│   └── ds4-gguf-iq2-1x/        #    单节点 ds4 引擎 + IQ2 GGUF
+├── qwen3.5-122b-a10b/
+│   ├── README.md
+│   ├── deploy/ docs/ scripts/ reports/
+├── laguna-s-2.1/
+│
+├── eval/                       # 跨模型质量 / 速度评测
 └── legacy/                     # 旧版 SGLang 部署脚本
 ```
 
