@@ -56,7 +56,7 @@ qwen3.5-122b-a10b/
 ```bash
 # 1. 部署（目标机器上）
 scp deploy/docker-compose-model-qwen35-122b-a10b-int4-vllm.yaml ai@<host>:~/lm_scripts/
-scp -r ../services/services ai@<host>:~/lm_scripts/      # 依赖 qwen3_nothink parser
+scp -r ../../services/services ai@<host>:~/lm_scripts/      # 依赖 qwen3_nothink parser
 ssh ai@<host> 'cd ~/lm_scripts && docker compose up -d'
 
 # 2. 等待健康（≈ 10–15 min，加载 72GB 权重 + 编译 FLASHINFER）

@@ -18,11 +18,11 @@
 
 ## 部署
 
-compose 依赖 [`../services/services/qwen3_nothink_reasoning_parser_vllm.py`](../services/services/qwen3_nothink_reasoning_parser_vllm.py)
+compose 依赖 [`../../services/services/qwen3_nothink_reasoning_parser_vllm.py`](../../services/services/qwen3_nothink_reasoning_parser_vllm.py)
 （`qwen3_nothink` reasoning parser，和 122B 共享）：
 
 ```bash
 scp deploy/docker-compose-model-qwen35-35b-nvfp4-vllm.yaml ai@<host>:~/lm_scripts/
-scp -r ../services/services ai@<host>:~/lm_scripts/
+scp -r ../../services/services ai@<host>:~/lm_scripts/
 ssh ai@<host> 'cd ~/lm_scripts && docker compose -f docker-compose-model-qwen35-35b-nvfp4-vllm.yaml up -d'
 ```
