@@ -4,7 +4,7 @@
 
 | 方案 | 目录 | 引擎 | 投机解码 | 单流 decode | 定位 |
 |---|---|---|---|---|---|
-| **vLLM + MTP** | [`vllm-mtp-1x-nvfp4/`](vllm-mtp-1x-nvfp4) | vLLM（复用仓库 `vllm-qwen35-v2` 镜像） | 内嵌 MTP 头 | ~24–26 tok/s | 稳，零额外权重 |
+| **vLLM + MTP** | [`vllm-mtp-1x-nvfp4/`](vllm-mtp-1x-nvfp4) | vLLM 0.27.1 | 内嵌 MTP 头 | 实测 17.6(散文)/27(代码)/31(数学) tok/s | ✅已验证 |
 | **SGLang + DSpark** | [`sglang-dspark-1x-nvfp4/`](sglang-dspark-1x-nvfp4) | SGLang（`sglang-dev-cu13-accel`） | DSpark 草稿模型（1.36B, block=7） | **~34–38 tok/s，峰值 46.7** | 快，社区一键方案 |
 
 > 方案出处：[NVIDIA DGX Spark 论坛版块](https://forums.developer.nvidia.com/c/accelerated-computing/dgx-spark-gb10/719)
