@@ -1,3 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
+import os as _os
+WORKERS=int(_os.environ.get('EVAL_WORKERS','6'))
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -16,12 +19,10 @@ bench_code.py — 编码能力评测（HumanEval + MBPP，pass@1，真跑测试�
 """
 import os, re, json, time, argparse, threading, subprocess, tempfile, urllib.request
 
+# 改 base/model 指向你的端点; 多模型对比就在下面加条目
 MODELS = [
-    # .12 现在跑的是 Laguna(DS4 已停，两者内存互斥)
-    {"name": "Laguna-S-2.1-NVFP4", "base": "http://192.168.130.12:8000/v1",
-     "model": "laguna-s-2.1", "extra": {}},
-    {"name": "Qwen3.5-122B-A10B", "base": "http://192.168.130.45:30001/v1",
-     "model": "qwen3.5-122b-int4", "extra": {"chat_template_kwargs": {"enable_thinking": False}}},
+    {"name": "Qwen3.8-27B", "base": "http://192.168.130.48:9001/v1",
+     "model": "qwen3.8-27b", "extra": {}},
 ]
 DS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "datasets")
 
@@ -105,14 +106,16 @@ def run_bench(key, n):
     res = {m["name"]: {"ok": 0, "n": 0, "err": 0} for m in MODELS}
     lock = threading.Lock()
     def worker(m):
-        for row in rows:
+        def do(row):
             out = mkprompt(row)
-            gen = chat(m, out, max_tokens=10000)  # 基本不设限，保证 Laguna 长推理不被截断
+            gen = chat(m, out, max_tokens=10000)
             ok = (not gen.startswith("__ERR__")) and grade(row, gen)
             with lock:
                 res[m["name"]]["n"] += 1
                 if gen.startswith("__ERR__"): res[m["name"]]["err"] += 1
                 if ok: res[m["name"]]["ok"] += 1
+        with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+            list(ex.map(do, rows))
     ths = [threading.Thread(target=worker, args=(m,)) for m in MODELS]
     t0 = time.time()
     for t in ths: t.start()
