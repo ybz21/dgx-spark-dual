@@ -1,0 +1,65 @@
+# Qwen3.8-27B on SGLang，DSpark 投机解码（single DGX Spark / GB10 / aarch64）
+# 目标机: 192.168.130.48 (box010)   端口: :8000   model id = qwen3.8-27b
+# 方案出处: https://forums.developer.nvidia.com/t/qwen3-8-27b-at-34-38-tok-s-on-dgx-spark-open-source-one-command-setup-sglang-nvfp4-dspark/380257
+#
+# ⚠️ 镜像: DSPARK 算法只在这个补丁镜像里: lmsysorg/sglang@sha256:febfb971c7352570fc445c466ebd6ffc9d896024958e544a60f2137fd85856b1
+#    (docker hub, arm64)。本仓库 LAN 的 sglang-dev-cu13-accel 没有 DSPARK。
+#    box010 外网慢: 开发机(代理) `docker pull --platform linux/arm64` →
+#    `docker save --platform linux/arm64 -o tar`(17GB) → 局域网传 → `docker load` →
+#    `docker tag <loaded-id> lmsysorg/sglang:dspark`（按 digest load 后无 tag）。
+# ⚠️ 主模型必须用 RadixArk(modelopt)，不是 unsloth(compressed-tensors，SGLang 报 actorder 错)。
+# ⚠️ 统一内存互斥: 与 vLLM 方案(../vllm-mtp-1x-nvfp4)、同机 122B 不能同时占内存。
+services:
+  qwen38-sglang:
+    image: lmsysorg/sglang:dspark          # docker load + tag 后的本地名
+    container_name: qwen38-sglang
+    restart: unless-stopped
+    runtime: nvidia
+    network_mode: host
+    ipc: host
+    shm_size: "16g"
+    volumes:
+      - ${MODELS_DIR:-/home/ai/models}:/models:ro
+      - ./.cache:/root/.cache
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HF_HUB_OFFLINE=1
+      - TORCHINDUCTOR_CACHE_DIR=/root/.cache/inductor
+    entrypoint: ["python3", "-m", "sglang.launch_server"]
+    command:
+      - --model-path
+      - /models/RadixArk-Qwen3.8-27B-NVFP4
+      - --served-model-name
+      - qwen3.8-27b
+      - --trust-remote-code
+      - --tp-size
+      - "1"
+      # ---- DSpark 投机解码 ----
+      - --speculative-algorithm
+      - DSPARK
+      - --speculative-draft-model-path
+      - /models/RadixArk-Qwen3.8-27B-DSpark
+      - --speculative-dspark-block-size
+      - "7"
+      - --num-continuous-decode-steps
+      - "2"
+      # ---- 内存/性能 ----
+      - --mem-fraction-static
+      - "0.50"
+      - --attention-backend
+      - flashinfer
+      - --enable-torch-compile
+      - --torch-compile-max-bs
+      - "4"
+      - --context-length
+      - "32768"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 40
+      start_period: 900s              # torch.compile + DSpark graph 捕获，冷启约 11 分钟

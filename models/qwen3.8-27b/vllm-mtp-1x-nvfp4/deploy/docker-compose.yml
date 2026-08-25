@@ -1,0 +1,50 @@
+# Qwen3.8-27B-NVFP4 on vLLM 0.27.1，MTP 投机解码（single DGX Spark / GB10 / aarch64）
+# 目标机: 192.168.130.48 (box010)   model id = qwen3.8-27b
+# 起服务:  docker compose up -d   →  OpenAI 接口 http://<host>:8000/v1
+#
+# ⚠️ 镜像: 必须用 vLLM ≥0.27（Qwen3.8 的 NVFP4 把 lm_head 也量化了，旧版加载报错）。
+#    `vllm/vllm-openai:latest`(docker hub, 0.27.1)。ghcr 的 spark-arena nightly 本网被墙。
+#    box010 外网慢: 在外网快的机器 `docker pull --platform linux/arm64` → `docker save
+#    --platform linux/arm64 -o tar`(9.9GB) → 局域网传到 box010 → `docker load`。
+# ⚠️ 统一内存: 权重 ~22GB + KV。gpu-memory-utilization=0.45 约占 ~55GB。生产机先腾内存。
+services:
+  qwen38-vllm:
+    image: vllm/vllm-openai:latest        # 0.27.1 arm64（从 tar docker load 进来）
+    container_name: qwen38-vllm
+    restart: unless-stopped
+    runtime: nvidia
+    network_mode: host
+    ipc: host
+    shm_size: "16g"
+    volumes:
+      - ${MODELS_DIR:-/home/ai/models}:/models:ro
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - VLLM_NO_USAGE_STATS=1
+    # entrypoint 默认即 `vllm serve`；模型路径为位置参数（不是 --model）
+    command:
+      - /models/Qwen3.8-27B-NVFP4
+      - --served-model-name
+      - qwen3.8-27b
+      - --trust-remote-code
+      - --gpu-memory-utilization
+      - "0.45"
+      - --max-model-len
+      - "32768"
+      - --max-num-seqs
+      - "4"
+      - --enable-prefix-caching
+      - --speculative-config
+      - '{"method":"mtp","num_speculative_tokens":5}'
+      - --reasoning-parser
+      - qwen3
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 30
+      start_period: 600s
