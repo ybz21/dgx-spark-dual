@@ -40,3 +40,10 @@ print(f"  completion_tokens={ct}  wall={dt:.1f}s  decode≈{ct/dt:.1f} tok/s")
 PY
 
 echo "== 全部通过 =="
+
+echo "== 5. Function Call（工具调用）=="
+curl -fsS -m30 "http://$HOST:$PORT/v1/chat/completions" -H 'Content-Type: application/json' -d '{
+  "model":"qwen3.8-27b",
+  "messages":[{"role":"user","content":"查一下上海的天气"}],
+  "tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}],
+  "tool_choice":"auto"}' | python3 -c 'import sys,json;d=json.load(sys.stdin);tc=d["choices"][0]["message"].get("tool_calls");print("  tool_calls:", [(t["function"]["name"],t["function"]["arguments"]) for t in tc] if tc else "❌ 无(工具调用未生效)")'

@@ -1,34 +1,45 @@
-# Qwen3.8-27B · vLLM + MTP · 部署验证报告
+# Qwen3.8-27B · vLLM + 官方 MTP + Function Call · 部署验证报告
 
-> 目标机：`ai@192.168.130.48`（box010，DGX Spark / GB10 / aarch64 / 119 GiB）
-> 日期：2026-08-24 · 状态：**✅ 部署成功并实测**
+> 目标机：`ai@192.168.130.48`（box010，DGX Spark / GB10 / aarch64）
+> 日期：2026-08-26 · 状态：**✅ 生产配置，已实测**（agent/多人场景推荐）
 
 ## 配置
 
 | 项 | 值 |
 |---|---|
 | 引擎 | vLLM **0.27.1**（`vllm/vllm-openai:latest`，arm64）|
-| 模型 | `unsloth/Qwen3.8-27B-NVFP4`（compressed-tensors NVFP4，~22 GiB 权重）|
-| 架构 | `Qwen3_5ForConditionalGeneration`（qwen3_5，混合 GDN 线性注意力 + 全注意力，多模态）|
-| 投机解码 | **MTP**（`--speculative-config '{"method":"mtp","num_speculative_tokens":5}'`；vLLM 自动检测内嵌 MTP 头，与主模型共享 embedding/lm_head）|
-| 量化 | NVFP4（FlashInferCutlassNvFp4LinearKernel），lm_head 也量化（需 vLLM ≥0.27）|
-| gpu-memory-utilization | 0.45 |
-| max-model-len | 32768（起步值，可调大）|
-| 端口 | :9001（box010 上 :8000/:8010 被生产服务占用）|
+| 模型 | `unsloth/Qwen3.8-27B-NVFP4`（compressed-tensors NVFP4）|
+| 投机解码 | **官方 MTP**（模型自带 `model_mtp.safetensors`，`num_speculative_tokens=5`）|
+| **Function Call** | ✅ `--enable-auto-tool-choice --tool-call-parser qwen3_coder` |
+| 思考解析 | `--reasoning-parser qwen3` |
+| 上下文 | **256k**（原生上限 `max_position_embeddings=262144`）|
+| 并发 | `--max-num-seqs 4`（MTP 稳定并发，超出排队，实测扛到 8）|
 
-## 实测（GB10，单流，greedy）
+## 实测
 
-| 任务 | 输出 tok | 墙钟 | Decode |
-|---|---|---|---|
-| 中文散文（自由生成）| 221 | 12.6s | **17.6 tok/s** |
-| 代码（快排+注释）| 256 | 9.5s | **27.0 tok/s** |
-| 数学（求和推导）| 256 | 8.3s | **30.9 tok/s** |
+**单流 decode（tok/s）**：散文 13.9 / 代码 30.5 / 数学 28.8。
 
-- 权重加载 ~25s，模型占用 22.1 GiB；含 torch.compile 冷启约 4–5 分钟。
-- MTP 投机在结构化内容（代码/数学）上接受率高，decode 27–31 tok/s，达到/超过论坛参考值（24–26 tok/s）；自由散文接受率低，~17.6 tok/s。
+**MTP 接受率：44–49%**（mean acceptance length 3.2–3.4）——远高于社区 DSpark 的 15–25%。
+
+**并发**：1/2/3/4/8 全稳、零崩溃（4 路并行 + 超出排队）。
+
+**Function Call**：正确返回结构化 `tool_calls`（`get_weather{"city":"北京"}`、`read_file{"path":"main.py"}`）——修复了 agent「输出一句就停、要人工点继续」的问题。
+
+## 官方 MTP vs 社区 DSpark（同机实测）
+
+| | DSpark(社区第三方) | **MTP(Qwen 官方)** |
+|---|---|---|
+| 接受率 | 15–25% | **44–49%** |
+| 代码/数学单流 | 31–33 | 29–31 tok/s |
+| 并发稳定性 | 上限 6、cuda graph 易崩 | **稳到 8** |
+| 工具调用 | 需另配 | ✅ |
+| 出身 | RadixArk 第三方草稿 + 补丁 SGLang | Qwen 官方随模型发布 |
+
+结论：**官方 MTP 完胜**——接受率高一倍、并发更稳、开箱工具调用。
 
 ## 关键坑
 
-1. **必须用较新 vLLM（≥0.27）**：Qwen3.8 的 NVFP4 权重把 `lm_head` 也量化了；本仓库 LAN 的旧 vLLM 镜像（0.19，v26041616）加载会报 `no module named lm_head.weight_scale`。用 `vllm/vllm-openai:latest`(0.27.1) 才行。
-2. **镜像获取**：ghcr 的 spark-arena nightly 本网被墙；`vllm/vllm-openai:latest`(docker hub) 可用，但 box010 外网被限速——在开发机(走代理)拉 arm64 → `docker save --platform linux/arm64`(9.9GB tar) → 走局域网传到 box010 → `docker load`。
-3. **入口**：`vllm/vllm-openai` 的 entrypoint 是 `vllm serve`，模型路径是**位置参数**（不是 `--model`）。
+1. **必须 vLLM ≥0.27**：Qwen3.8 NVFP4 的 lm_head 也量化，旧镜像加载报 `no module named lm_head.weight_scale`。
+2. **Function Call 必须配 `--tool-call-parser qwen3_coder`**：否则模型的工具调用变纯文本，agent 认不出 → 每步卡住要人工点「继续」。
+3. **MTP 并发**：max-num-seqs=4 + 干净 GPU 稳；开很大且同机有进程 churn GPU 时 MTP 可能触发 CUDA illegal memory access。
+4. **1M 上下文**：非原生（config 上限 256k），需 RoPE 外推有质量风险，未开。
