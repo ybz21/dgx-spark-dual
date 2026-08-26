@@ -1,5 +1,7 @@
 # 模型评测
 
+> 🆕 新增可扩展评测框架 [`harness.py`](harness.py)：OpenAI 接口驱动 + 动态加数据集(`datasets.d/`) + 每集独立报告 + **function call 评测**。见 [`README-harness.md`](README-harness.md)。
+
 在两台 DGX Spark (GB10) 上对本仓库部署的模型做的**性能 + 质量 + 编码**对比评测。全部自动判分、可复现。
 
 被测端点(OpenAI 兼容):

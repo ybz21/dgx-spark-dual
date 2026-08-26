@@ -1,0 +1,13 @@
+{
+  "name": "my_qa",
+  "group": "custom",
+  "kind": "contains",
+  "file": "my_qa.jsonl",
+  "format": "jsonl",
+  "question_field": "q",
+  "answer_field": "a",
+  "prompt_template": "{q}\n直接给出简短答案。",
+  "max_tokens": 512,
+  "n_default": 50,
+  "_注": "把本文件复制成 <name>.json(去掉下划线前缀)并改内容; 数据文件放 scripts/datasets/ 下"
+}

@@ -1,0 +1,3 @@
+{"name":"toolcall","group":"function-call","kind":"toolcall","file":"toolcall.jsonl",
+ "max_tokens":512,"n_default":20,
+ "_注":"function call 能力评测: 发带 tools 的请求, 判分是否调对函数+关键参数(子集匹配)"}
