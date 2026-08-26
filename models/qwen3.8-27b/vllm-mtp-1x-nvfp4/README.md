@@ -27,9 +27,27 @@ cd deploy && docker compose up -d && docker compose logs -f    # 冷启 3–6 �
 bash scripts/smoke-test.sh 192.168.130.48 8000
 ```
 
-`deploy/docker-compose.yml` 关键参数：`--trust-remote-code`、`--gpu-memory-utilization 0.45`、`--speculative-config '{"method":"mtp","num_speculative_tokens":5}'`、`--max-model-len 32768`、prefix caching、`0.0.0.0:8000`。
+`deploy/docker-compose.yml` 关键参数：官方 MTP 投机(`--speculative-config mtp`)、**工具调用**(`--enable-auto-tool-choice --tool-call-parser qwen3_coder`)、思考解析(`--reasoning-parser qwen3`)、`--max-model-len 262144`(256k)、`--max-num-seqs 4`、prefix caching、`0.0.0.0:8000`。
 
 > **若镜像不支持 MTP**：删掉 compose 里 `--speculative-config` 两行即退到纯连续解码（功能不受影响，decode 略慢）。
+
+## Function Call（工具调用）✅
+
+本配置**已开工具调用**（`--enable-auto-tool-choice --tool-call-parser qwen3_coder`）——agent 场景必须。实测正确返回结构化 `tool_calls`：
+
+```bash
+curl http://192.168.130.48:8000/v1/chat/completions -H 'Content-Type: application/json' -d '{
+  "model": "qwen3.8-27b",
+  "messages": [{"role":"user","content":"北京天气怎么样？"}],
+  "tools": [{"type":"function","function":{
+    "name":"get_weather","description":"查天气",
+    "parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}],
+  "tool_choice": "auto"
+}'
+# -> finish_reason=tool_calls, tool_calls=[get_weather {"city":"北京"}]
+```
+
+> ⚠️ agent 里「输出一句就停、要人工点继续」的坑，根因就是没配 tool-call-parser（工具调用变纯文本，agent 认不出）。本配置已修。
 
 ## API
 

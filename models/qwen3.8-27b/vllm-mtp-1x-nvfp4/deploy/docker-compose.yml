@@ -1,12 +1,16 @@
-# Qwen3.8-27B-NVFP4 on vLLM 0.27.1，MTP 投机解码（single DGX Spark / GB10 / aarch64）
-# 目标机: 192.168.130.48 (box010)   model id = qwen3.8-27b
-# 起服务:  docker compose up -d   →  OpenAI 接口 http://<host>:8000/v1
+# Qwen3.8-27B-NVFP4 on vLLM 0.27.1 · 官方 MTP 投机解码 · Function Call · 256k
+# 目标机: 192.168.130.48 (box010)   model id = qwen3.8-27b   端口 :8000
+# 起服务:  docker compose up -d   →  OpenAI 兼容 http://<host>:8000/v1
 #
-# ⚠️ 镜像: 必须用 vLLM ≥0.27（Qwen3.8 的 NVFP4 把 lm_head 也量化了，旧版加载报错）。
-#    `vllm/vllm-openai:latest`(docker hub, 0.27.1)。ghcr 的 spark-arena nightly 本网被墙。
-#    box010 外网慢: 在外网快的机器 `docker pull --platform linux/arm64` → `docker save
-#    --platform linux/arm64 -o tar`(9.9GB) → 局域网传到 box010 → `docker load`。
-# ⚠️ 统一内存: 权重 ~22GB + KV。gpu-memory-utilization=0.45 约占 ~55GB。生产机先腾内存。
+# ★ 本配置为生产/agent 推荐配置：官方 MTP(接受率 44-49%) + 工具调用(function call) + 256k 上下文。
+#   实测: 单流 代码/数学 ~30 tok/s、并发稳到 8、工具调用正确返回结构化 tool_calls。
+#
+# ⚠️ 镜像: 必须 vLLM ≥0.27（Qwen3.8 NVFP4 的 lm_head 也量化，旧版加载报错）。
+#   `vllm/vllm-openai:latest`(docker hub, 0.27.1)；ghcr 的 spark-arena nightly 本网被墙。
+#   box010 外网慢: 外网快的机器 `docker pull --platform linux/arm64` → `docker save
+#   --platform linux/arm64 -o tar`(9.9GB) → 局域网传到 box010 → `docker load`。
+# ⚠️ MTP 并发: 实测 max-num-seqs=4 + 干净 GPU 下并发稳到 8(超出排队)。若把 max-num-seqs
+#   开很大且同机有别的进程 churn GPU，MTP 投机可能触发 CUDA illegal memory access。保守用 4。
 services:
   qwen38-vllm:
     image: vllm/vllm-openai:latest        # 0.27.1 arm64（从 tar docker load 进来）
@@ -27,17 +31,23 @@ services:
       - --served-model-name
       - qwen3.8-27b
       - --trust-remote-code
-      - --gpu-memory-utilization
-      - "0.45"
-      - --max-model-len
-      - "32768"
-      - --max-num-seqs
-      - "4"
-      - --enable-prefix-caching
+      # ---- 官方 MTP 投机解码（模型自带 model_mtp.safetensors）----
       - --speculative-config
       - '{"method":"mtp","num_speculative_tokens":5}'
+      # ---- Function Call / 工具调用（agent 必须）----
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - qwen3_coder
       - --reasoning-parser
       - qwen3
+      # ---- 上下文 / 内存 / 并发 ----
+      - --max-model-len
+      - "262144"                          # 原生上限 256k(max_position_embeddings=262144)
+      - --gpu-memory-utilization
+      - "0.60"
+      - --max-num-seqs
+      - "4"                               # MTP 稳定并发；超出排队(实测扛到 8)
+      - --enable-prefix-caching
       - --host
       - 0.0.0.0
       - --port
