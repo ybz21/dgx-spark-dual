@@ -1,0 +1,3 @@
+{"name":"demo_math_zh","group":"math-zh","kind":"numeric","file":"demo_math_zh.jsonl",
+ "format":"jsonl","question_field":"question","answer_field":"answer",
+ "prompt_template":"{question}\n只输出最终数字答案。","max_tokens":2048,"n_default":5}
