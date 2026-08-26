@@ -25,11 +25,10 @@ import json, time, argparse, urllib.request, urllib.error, re, sys, statistics
 # ----------------------------------------------------------------------------
 # 被测模型配置：extra 是各自“关闭思考模式”的私有参数（互不发送）
 # ----------------------------------------------------------------------------
+# 改 base/model 指向你的端点; 多模型对比就在下面加条目
 MODELS = [
-    {"name": "DeepSeek-V4-Flash", "base": "http://192.168.130.12:8000/v1",
-     "model": "deepseek-v4-flash", "extra": {"think": False}},
-    {"name": "Qwen3.5-122B-A10B", "base": "http://192.168.130.45:30001/v1",
-     "model": "qwen3.5-122b-int4", "extra": {"chat_template_kwargs": {"enable_thinking": False}}},
+    {"name": "Qwen3.8-27B", "base": "http://192.168.130.48:9001/v1",
+     "model": "qwen3.8-27b", "extra": {"chat_template_kwargs": {"enable_thinking": False}}},
 ]
 
 # ----------------------------------------------------------------------------

@@ -1,3 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
+import os as _os
+WORKERS=int(_os.environ.get('EVAL_WORKERS','6'))
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -18,12 +21,10 @@ bench_quality.py — 用真·标准 benchmark 评两个模型的质量。
 """
 import os, re, csv, json, glob, random, argparse, urllib.request, threading, time
 
+# 改 base/model 指向你的端点; 多模型对比就在下面加条目
 MODELS = [
-    # .12 现在跑 Laguna(DS4 已停，内存互斥)
-    {"name": "Laguna-S-2.1-NVFP4", "base": "http://192.168.130.12:8000/v1",
-     "model": "laguna-s-2.1", "extra": {}},
-    {"name": "Qwen3.5-122B-A10B", "base": "http://192.168.130.45:30001/v1",
-     "model": "qwen3.5-122b-int4", "extra": {"chat_template_kwargs": {"enable_thinking": False}}},
+    {"name": "Qwen3.8-27B", "base": "http://192.168.130.48:9001/v1",
+     "model": "qwen3.8-27b", "extra": {}},
 ]
 DS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "datasets")
 
@@ -121,7 +122,7 @@ def run_bench(name, items):
     results = {m["name"]: {"ok": 0, "n": 0, "err": 0} for m in MODELS}
     lock = threading.Lock()
     def worker(m):
-        for it in items:
+        def do(it):
             prompt, gold, grader, mx = it[0], it[1], it[2], it[3]
             out = chat(m, prompt, max_tokens=mx)
             ok = (not out.startswith("__ERR__")) and grader(out, gold)
@@ -129,6 +130,8 @@ def run_bench(name, items):
                 results[m["name"]]["n"] += 1
                 if out.startswith("__ERR__"): results[m["name"]]["err"] += 1
                 if ok: results[m["name"]]["ok"] += 1
+        with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+            list(ex.map(do, items))
     ths = [threading.Thread(target=worker, args=(m,)) for m in MODELS]
     t0 = time.time()
     for t in ths: t.start()
