@@ -1,0 +1,10 @@
+[Unit]
+Description=RoCE point-to-point autoconf (DGX Spark x2)
+After=network-online.target NetworkManager.service
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/roce-autoconf.sh
+TimeoutStartSec=0
+[Install]
+WantedBy=multi-user.target

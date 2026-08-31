@@ -35,11 +35,21 @@
 - 部署目录两台都是 `~/ds4-dspark-2x`，HF cache 两台都是 `~/.cache/huggingface`
 - 运行时镜像 `vllm-dspark-runtime:dspark-nvfp4-stage-c`（两台都已 load）
 
-> ⚠️ **光纤 IP 是手工配的，机器重启会丢**。不通时：
+> 光纤 IP / 光口 / GID 推荐用 [`scripts/roce-autoconf/`](scripts/roce-autoconf) 自动管理（systemd 开机自启）：
+> 扫描所有有光的 CX7 口，选出对端可达的那个，把点对点 IP 写成 NetworkManager 静态连接（重启不丢），
+> 并把实测的 `NCCL_SOCKET_IFNAME` / `NCCL_IB_HCA` / `NCCL_IB_GID_INDEX` 就地同步进 `.env.dspark`。
+> 安装（head/worker 各一次，root）：
 > ```bash
-> sudo ip addr add 10.0.0.2/24 dev enp1s0f1np1 && sudo ip link set enp1s0f1np1 up   # head
-> sudo ip addr add 10.0.0.3/24 dev enp1s0f1np1 && sudo ip link set enp1s0f1np1 up   # worker
+> scripts/roce-autoconf/install.sh 10.0.0.2 10.0.0.3   # head
+> scripts/roce-autoconf/install.sh 10.0.0.3 10.0.0.2   # worker
 > ```
+> 解决的三个实测坑（46/141 双 Spark 集群部署与重启测试踩出来的）：
+> 1. 手工 `ip addr add` 会被 NetworkManager 刷掉（"重启会丢"的根因，且不重启也可能丢）；
+> 2. **GID index 不能写死**：它是网卡 GID 表的行号，跟口上的地址数量/顺序走，机器之间不同
+>    （我们两台一台 5 一台 6），重启后还会漂移，选错 NCCL 直接 `ibv_modify_qp EINVAL` 崩环；
+> 3. 光纤插错口/换口后无需改任何配置，重跑脚本即自动收敛。
+> 另建议：把光口上 NM 自动生成的"有线连接"配置 `autoconnect no`——它们反复抢 DHCP 加删地址，
+> 是 GID 表运行中重排的元凶。
 
 ## 前置状态（截至 2026-08-23 已就绪，不用重做）
 
