@@ -1,0 +1,6 @@
+[Unit]
+Description=DS4 dual-node watchdog
+After=docker.service roce-autoconf.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ds4-watchdog.sh

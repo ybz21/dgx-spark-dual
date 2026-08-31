@@ -1,0 +1,10 @@
+[Unit]
+Description=Clear DS4 vllm kernel cache on boot (stale cache + cudagraph capture = Triton not-permitted crash, 2026-08-31)
+DefaultDependencies=no
+Before=docker.service
+After=local-fs.target
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "rm -rf /home/ai/.cache/huggingface/vllm-cache && echo cleared"
+[Install]
+WantedBy=multi-user.target
