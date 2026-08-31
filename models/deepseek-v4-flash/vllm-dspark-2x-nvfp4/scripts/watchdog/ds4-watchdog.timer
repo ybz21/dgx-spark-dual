@@ -1,0 +1,7 @@
+[Unit]
+Description=Run DS4 watchdog every 2 minutes
+[Timer]
+OnBootSec=90
+OnUnitActiveSec=120
+[Install]
+WantedBy=timers.target
