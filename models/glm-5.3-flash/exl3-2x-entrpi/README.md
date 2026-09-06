@@ -24,10 +24,30 @@
 - [x] 权重下载：ModelScope 拉到 `.8`，光缆推到 `.12`（164 GiB / 96 s ≈ 1.7 GB/s）
 - [x] 权重校验：两台各 133 个文件 sha256 全过（120 shard 全对，见下方"校验"）
 - [x] drafter 下载：两台 `~/models/glm53-dflash2-mxfp8`
-- [ ] **起服务：卡在内存** —— 两台目前都被 DeepSeek-V4-Flash 双节点服务和常驻业务占着，
-      已用 112 / 113 GiB（共 119）。kit 要求起服务前系统内存占用 < 6 GB。
-      详见 [`docs/现场勘察-192.168.130.8-12.md`](docs/现场勘察-192.168.130.8-12.md)。
-- [ ] 实测复现 + 进 [`../../../eval/`](../../../eval) 流程
+- [x] **服务已上线** 2026-09-06：`http://192.168.130.8:8000/v1`，模型名 `glm-5.3-flash`，
+      `install.sh EXIT=0`，`max_model_len=524288`
+- [x] 单流速度实测（见下方"实测速度"）
+- [ ] 进 [`../../../eval/`](../../../eval) 流程出质量分
+- [ ] 与 NVFP4 方案 A/B（权重已在两台就位，见 [`../README.md`](../README.md)）
+
+## 实测速度（2026-09-06，本地两台实机）
+
+单流、`temperature=0`、`max_tokens=400`：
+
+| 负载 | 本地实测 | 上游 Entrpi |
+|---|---:|---:|
+| 结构化（计数 1–200） | **67.0** tok/s | 72.4 |
+| 代码（LRU cache 实现） | **56.3** tok/s | 42 |
+| JSON（40 个对象） | **56.0** tok/s | 51 |
+| 英文散文 | 23.2 tok/s | 27.4 |
+| **中文散文** | **14.9** tok/s | 上游未测 |
+| 首 token 往返（短 prompt） | **0.21** s | 0.43–0.47 |
+
+代码、JSON、TTFT 都比上游好；**中文散文只有英文的 64%**，是本地新发现的一条：
+DFlash2 drafter 对中文的接受率明显低于英文，上游从没测过中文。
+跑中文自由对话的实际体感会比宣传数字差不少；结构化 / 代码 / JSON 类负载则对得上。
+
+启动实测：权重加载 82.59 GiB / 38 秒，NCCL 2.31.2 双机建链，预热 32 秒。
 
 ## 部署步骤
 
@@ -135,3 +155,25 @@ ModelScope 镜像换掉了这两个文件，120 个 shard 和全部配置文件�
   （~3.6 分钟到 API）。**别切回 page-cache 加载器**，那个会吃光 swap，16 GiB 会在加载到
   九成时把 head 打死，要切先把两台 swap 扩到 32 GiB。
 - **drafter 是 CC BY-NC-ND 4.0**，研究/评测可用，不要再分发。
+- **`KV_CACHE_MEMORY` 只吃纯整数**。写 `12.4e9` 会被 vLLM 拒：
+  `argument --kv-cache-memory-bytes: Value 12.4e9 cannot be converted`。
+  必须写 `12400000000`。坑在于 kit 自己的 `.env.example` 和 README 里
+  通篇是 `14.4e9` 这种写法（那个走的是 launcher 的默认分支，不经过这条校验）。
+- **内存预检卡在 7 GB（限 6 GB）**。`.8` 是常驻业务机，停掉 DS4 之后仍有
+  java(nexus) 1.1 GB、dockerd 0.4 GB、gnome-shell 0.2 GB 等。
+  处理办法是把 `MEM_USED_MAX_GB` 抬到 8 **同时**把 `KV_CACHE_MEMORY` 从
+  14.4 GB 降到 12.4 GB 补偿回去，用自己的池子换系统余量；
+  **不要** `MEM_USED_MAX_GB=0` 直接关检查。
+- **国内拉不动 ghcr 系镜像**。这台机器到 `ghcr.io` / `ghcr.nju.edu.cn` /
+  `ghcr.dockerproxy.net` 实测都只有 0.1 MB/s，25 GiB 镜像要十几小时，
+  `install.sh` 会在 pull 阶段卡死。可用的是 **`ghcr.chenby.cn`**：
+  docker 多层并行实测 **10.13 MiB/s**，约 40 分钟拉完。做法见
+  [`scripts/pull-image.sh`](scripts/pull-image.sh)，拉完 retag 成
+  `ghcr.io/entrpi/...:v2.3-tier1` 让 launcher 的默认镜像名本地命中，不用改 `.env`。
+- **测镜像源速度别只看 HTTP 码和 curl 的 speed_download**。代理站会秒返
+  26 字节的 `{"message":"UNAUTHORIZED"}`，`%{http_code}` 是 200、算出来的速度
+  高达 4.4 MiB/s，全是假的。必须真下几十 MB 再用 `file` 确认是 gzip 二进制。
+  另外代理站要走**它自己**的 token 认证（`www-authenticate` 里的 realm），
+  只对 ghcr.io 做握手会把可用的源误判成 401。
+- **镜像同步到 worker 走光缆**。`docker save | ssh | docker load` 传 18 GB
+  比让 worker 自己去外网拉快得多。
