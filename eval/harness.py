@@ -122,8 +122,15 @@ def g_toolcall(msg, expect):
     return False
 
 def _extract_code(text):
+    # 取"解法"那一块，不是最后一块。话多的模型常在完整解法之后再补一段
+    # 说明性片段(例如只有一行递推式)，盲取 m[-1] 会抽到片段，判分就变成
+    # 惩罚话多——实测 GLM-5.3-Flash 的 MBPP 因此从 ~90% 掉到 25%。
+    # 规则: 优先在含 def/class/import 的块里取最长的; 都不含则退回最后一块。
     m = re.findall(r"```(?:python)?\s*(.*?)```", text or "", re.S)
-    return (m[-1] if m else (text or "")).strip()
+    if not m:
+        return (text or "").strip()
+    defs = [b for b in m if re.search(r"^\s*(def |class |import |from )", b, re.M)]
+    return (max(defs, key=len) if defs else m[-1]).strip()
 
 def _run_py(src, timeout=15):
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
