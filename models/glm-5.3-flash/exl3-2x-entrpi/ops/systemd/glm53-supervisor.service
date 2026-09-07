@@ -1,0 +1,21 @@
+[Unit]
+Description=GLM-5.3-Flash 双节点看门狗（启动顺序 + 崩溃自愈）
+# 光口先配好、docker 先起来
+After=network-online.target docker.service glm53-rail.service
+Wants=network-online.target glm53-rail.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ai
+# 脚本自己是死循环并带退避，异常退出就直接拉起来
+Restart=always
+RestartSec=15
+ExecStart=/usr/local/bin/glm53-supervise.sh
+# 开机时 worker 可能还没好，supervisor 自己会等，别让 systemd 判超时
+TimeoutStartSec=0
+StandardOutput=append:/var/log/glm53-supervisor.log
+StandardError=append:/var/log/glm53-supervisor.log
+
+[Install]
+WantedBy=multi-user.target

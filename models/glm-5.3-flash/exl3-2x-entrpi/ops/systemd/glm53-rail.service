@@ -1,0 +1,14 @@
+[Unit]
+Description=GLM-5.3-Flash 光口自适应（探测并配置 200GbE 直连地址）
+# 网络栈起来之后再跑；它自己带重试，等得起对端慢启动
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/glm53-rail.sh
+# 对端没开机时脚本会保底配好地址并返回 0；真返回 1 是"一根光缆都没插"
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
