@@ -15,9 +15,12 @@ CFG=${CFG:-/etc/glm53-ops.env}
 log() { echo "[rail] $*"; }
 
 # --- 自认角色 -------------------------------------------------------------
-myip=$(ip -o -4 addr show | awk '{print $4}' | cut -d/ -f1 | grep -Fx "$HEAD_LAN_IP" || true)
-if [ -n "$myip" ]; then ROLE=head; MY_IP=$HEAD_RAIL_IP; PEER_IP=$WORKER_RAIL_IP
-else                    ROLE=worker; MY_IP=$WORKER_RAIL_IP; PEER_IP=$HEAD_RAIL_IP; fi
+ROLE=${ROLE:-${NODE_ROLE:-}}
+case "$ROLE" in
+  master|head) ROLE=head; MY_IP=$HEAD_RAIL_IP; PEER_IP=$WORKER_RAIL_IP ;;
+  slave|worker) ROLE=worker; MY_IP=$WORKER_RAIL_IP; PEER_IP=$HEAD_RAIL_IP ;;
+  *) log "无法确认本机角色（管理网 IP 尚未就绪或配置错误）"; exit 2 ;;
+esac
 log "role=$ROLE  自己=$MY_IP  对端=$PEER_IP"
 
 hca_of() {  # 网口名 -> RoCE HCA 名

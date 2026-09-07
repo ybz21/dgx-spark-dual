@@ -11,7 +11,7 @@ Requires=docker.service
 Type=oneshot
 RemainAfterExit=yes
 # 开机先把上一次的残留容器清掉，避免 head 来编排时撞上旧进程
-ExecStart=/usr/bin/docker rm -f vllm_glm53
+ExecStart=-/usr/bin/docker rm -f vllm_glm53
 ExecStart=/bin/true
 
 [Install]

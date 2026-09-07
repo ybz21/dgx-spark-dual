@@ -1,0 +1,12 @@
+[Unit]
+Description=GLM-5.3-Flash 光口周期探测（支持插拔/换口）
+After=network-online.target
+Wants=network-online.target
+
+[Timer]
+OnBootSec=10s
+OnUnitActiveSec=30s
+Unit=glm53-rail.service
+
+[Install]
+WantedBy=timers.target

@@ -214,11 +214,14 @@ cd ops && bash install-ops.sh      # 在 head 上跑一次，它会把 worker �
 |---|---|
 | [`ops/glm53-ops.env`](ops/glm53-ops.env) | 两台共用配置：角色、光口候选、serving 档位（当前 1M） |
 | [`ops/glm53-rail.sh`](ops/glm53-rail.sh) | 光口自适应：探测并配好 200GbE 直连地址 |
+| [`ops/systemd/glm53-rail.timer`](ops/systemd/glm53-rail.timer) | 每 30 秒重探测，支持运行中插拔/换口 |
 | [`ops/glm53-supervise.sh`](ops/glm53-supervise.sh) | 看门狗 + 启动顺序编排，跑在 head |
 | [`ops/systemd/`](ops/systemd) | 三个单元，两台开机自启 |
 
 ### 光口自适应
 
+这里使用的是双节点直连所需的**固定点对点地址**（不是 DHCP）；脚本负责自动选择接口并补配地址。
+节点角色通过 `NODE_ROLE=master/slave` 显式指定，管理网地址只用于安装时通过 `WORKER_HOST`（主机名/DNS）找到从节点，不参与角色判断。
 判据是**「配上地址后能不能 ping 通对端」，不是「有没有光」**。实机上每台插了两对缆、
 四个口里有两个 carrier=1，只看 carrier 会挑错口。脚本把四个口全列为候选逐个试，
 成功后从 sysfs 反查对应的 RoCE HCA 名写进 `/run/glm53-rail.env`。
