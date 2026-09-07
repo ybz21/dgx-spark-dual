@@ -201,3 +201,104 @@ ModelScope 镜像换掉了这两个文件，120 个 shard 和全部配置文件�
   只对 ghcr.io 做握手会把可用的源误判成 401。
 - **镜像同步到 worker 走光缆**。`docker save | ssh | docker load` 传 18 GB
   比让 worker 自己去外网拉快得多。
+
+## 运维层（开机自启 / 崩溃自愈 / 光口自适应）
+
+目标是插上就能用、中间出问题自己恢复。装一次，之后开机、崩溃、换光口都不用管：
+
+```bash
+cd ops && bash install-ops.sh      # 在 head 上跑一次，它会把 worker 侧也装好
+```
+
+| 文件 | 干什么 |
+|---|---|
+| [`ops/glm53-ops.env`](ops/glm53-ops.env) | 两台共用配置：角色、光口候选、serving 档位（当前 1M） |
+| [`ops/glm53-rail.sh`](ops/glm53-rail.sh) | 光口自适应：探测并配好 200GbE 直连地址 |
+| [`ops/glm53-supervise.sh`](ops/glm53-supervise.sh) | 看门狗 + 启动顺序编排，跑在 head |
+| [`ops/systemd/`](ops/systemd) | 三个单元，两台开机自启 |
+
+### 光口自适应
+
+判据是**「配上地址后能不能 ping 通对端」，不是「有没有光」**。实机上每台插了两对缆、
+四个口里有两个 carrier=1，只看 carrier 会挑错口。脚本把四个口全列为候选逐个试，
+成功后从 sysfs 反查对应的 RoCE HCA 名写进 `/run/glm53-rail.env`。
+
+幂等：已配好且对端可达就直接返回，不动网络（服务不会被踢断）。实测三种场景都过：
+已配好 → 不动；地址被删 → 第 1 轮找回；地址在别的口 → 正确识别并写出对应 HCA。
+
+### 启动顺序
+
+硬约束：**先删 head 容器 → 再删 worker → 起 worker → 起 head**，且 worker→head
+间隔要小于 torch 的 600 秒 rendezvous 超时（新 worker 会跟旧 head 的 TCP store 会合，
+旧 head 一走就 connection-reset 而死）。
+
+所以编排全部收在 head 的 supervisor 里，**没有让两台各自开机自启容器**——那样顺序必乱。
+worker 侧的 `glm53-worker-boot.service` 只做一件事：开机清掉上次的残留容器，然后等 head 来编排。
+
+### ⚠️ 看门狗不能用 `/health` 判活
+
+**实测过的坑**：`docker kill` 掉 worker 容器之后，head 的 `/health` 依然稳定返回 200，
+而任何真实请求都挂死（60 秒超时 `http=000`）。第一版看门狗拿 `/health` 当判据，
+worker 死了 50 分钟一次都没触发。
+
+改成两级判据：
+
+1. **结构检查**（便宜）：两台容器是不是都在 `running`。命中直接判失败，不等探针超时。
+2. **生成探针**（真实）：发 `max_tokens=1` 的请求，必须拿到 `"choices"` 才算活。
+
+连续 3 次失败才动手（避免抖动误触发），重启失败按 60→600 秒指数退避。
+每轮重启前重跑一次 rail 探测，所以"崩溃期间光缆被换了口"这种组合也覆盖。
+
+实测一次真实故障恢复（`docker kill` worker）：
+
+```
+10:45:54  健康检查失败 1/3      ← 结构检查第一次轮询就命中
+10:46:55  健康检查失败 3/3 → 开始有序重启
+10:46:59  起 worker (rank 1)
+10:47:15  起 head (rank 0)      ← 间隔 16s
+10:51:22  重启成功
+```
+
+**故障发现到服务恢复 5 分 28 秒，无人介入**，恢复后 `max_model_len` 和 KV 池与故障前一致。
+
+### 改 serving 旋钮不要走 install.sh
+
+改 `.env` 后重跑 `install.sh` 会失败，head 报 `this host does not own 10.0.0.2`，
+但手动跑它自己那条检查（`ip -o addr show | grep "10.0.0.2/"`）是命中的。
+更糟的是 install.sh 判定失败后**自动回滚，把新写的旋钮一起还原掉**。
+
+直接调 launcher，命令行变量优先级最高（supervisor 就是这么干的）：
+
+```bash
+docker rm -f vllm_glm53                              # 先删 head
+ssh ai@10.0.0.3 docker rm -f vllm_glm53              # 再删 worker
+K="KV_DTYPE=nvfp4_ds_mla VLLM_NVFP4_MLA_DYNAMIC_SCALE=1 MAX_LEN=1048576 MNBT=4096"
+ssh ai@10.0.0.3 "env $K ~/launch-glm53-vllm-tp2.sh 1"   # 起 worker
+env $K ~/launch-glm53-vllm-tp2.sh 0                     # 起 head
+```
+
+## 1M 上下文档（当前生效）
+
+| | 512K 档 | **1M 档（现用）** |
+|---|---:|---:|
+| `max_model_len` | 524,288 | **1,048,576** |
+| KV 池 | 1,051,936 token | **1,613,717 token**（+53%） |
+| 满长并发 | 2.01x | 1.54x |
+| KV 格式 | fp8_ds_mla | nvfp4_ds_mla |
+| MNBT | 8192 | 4096 |
+
+fp8 KV 撑不住 1M，必须**同时**开 NVFP4 注意力内存（`KV_DTYPE=nvfp4_ds_mla` +
+`VLLM_NVFP4_MLA_DYNAMIC_SCALE=1`），代价是上游实测 math_500 从 91 降到 88。
+
+速度几乎没掉（单流 temp 0）：
+
+| 负载 | 1M 档 | 512K 档 |
+|---|---:|---:|
+| 结构化 | **68.8** tok/s | 67.0 |
+| 代码 | **57.8** tok/s | 56.3 |
+| JSON | 55.4 tok/s | 56.0 |
+| 英文散文 | 19.8 tok/s | 23.2 |
+
+长上下文实测：30,038 token 大海捞针**答对**，prefill 1,283 tok/s。
+
+换回 512K：改 `ops/glm53-ops.env` 里的 `PROFILE_*` 三项，重启 supervisor 即可。
